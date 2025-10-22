@@ -1,0 +1,691 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import os
+from supabase import create_client, Client
+from typing import List, Dict, Optional
+import json
+
+# Page configuration
+st.set_page_config(
+    page_title="Goal Extractor Dashboard",
+    page_icon="🎯",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Initialize Supabase connection
+@st.cache_resource
+def init_supabase():
+    """Initialize Supabase client with cached connection"""
+    try:
+        # Ensure .env is loaded
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        # Try environment variables first, then Streamlit secrets
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        
+        # If not found in env vars, try Streamlit secrets
+        if not supabase_url:
+            try:
+                supabase_url = st.secrets["SUPABASE_URL"]
+            except:
+                pass
+                
+        if not supabase_key:
+            try:
+                supabase_key = st.secrets["SUPABASE_SERVICE_KEY"]
+            except:
+                pass
+        
+        if not supabase_url or not supabase_key:
+            st.error("❌ Missing Supabase credentials. Please set SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables.")
+            return None
+            
+        return create_client(supabase_url, supabase_key)
+    except Exception as e:
+        st.error(f"❌ Error connecting to Supabase: {e}")
+        return None
+
+# Data fetching functions
+def fetch_vague_goals(supabase: Client, organization_id: str = None):
+    """Fetch vague goals that need clarification"""
+    try:
+        query = supabase.schema('peer_progress').table('vague_goals_detected').select('*')
+        if organization_id:
+            query = query.eq('organization_id', organization_id)
+        
+        result = query.order('created_at', desc=True).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        st.error(f"Error fetching vague goals: {e}")
+        return []
+
+def fetch_quantifiable_goals(supabase: Client, organization_id: str = None, start_date: str = None, end_date: str = None):
+    """Fetch quantifiable goals with optional date filtering"""
+    try:
+        query = supabase.schema('peer_progress').table('quantifiable_goals').select('*')
+        
+        if organization_id:
+            query = query.eq('organization_id', organization_id)
+        if start_date:
+            query = query.gte('call_date', start_date)
+        if end_date:
+            query = query.lte('call_date', end_date)
+        
+        result = query.order('call_date', desc=True).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        st.error(f"Error fetching quantifiable goals: {e}")
+        return []
+
+def fetch_community_posts(supabase: Client, organization_id: str = None):
+    """Fetch community posts"""
+    try:
+        result = supabase.schema('peer_progress').table('community_posts').select('*').order('created_at', desc=True).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        st.error(f"Error fetching community posts: {e}")
+        return []
+
+def fetch_member_attendance(supabase: Client, organization_id: str = None):
+    """Fetch member attendance data"""
+    try:
+        result = supabase.schema('peer_progress').table('member_attendance').select('*').order('call_date', desc=True).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        st.error(f"Error fetching member attendance: {e}")
+        return []
+
+def fetch_member_changes(supabase: Client, organization_id: str = None):
+    """Fetch member change log"""
+    try:
+        result = supabase.schema('peer_progress').table('member_change_log').select('*').order('created_at', desc=True).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        st.error(f"Error fetching member changes: {e}")
+        return []
+
+def fetch_marketing_activities(supabase: Client, organization_id: str = None):
+    """Fetch marketing activities"""
+    try:
+        result = supabase.schema('peer_progress').table('marketing_activities').select('*').order('session_date', desc=True).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        st.error(f"Error fetching marketing activities: {e}")
+        return []
+
+def fetch_challenges_strategies(supabase: Client, organization_id: str = None):
+    """Fetch challenges and strategies"""
+    try:
+        challenges_result = supabase.schema('peer_progress').table('challenges').select('*').order('session_date', desc=True).execute()
+        strategies_result = supabase.schema('peer_progress').table('strategies').select('*').order('created_at', desc=True).execute()
+        
+        return {
+            'challenges': challenges_result.data if challenges_result.data else [],
+            'strategies': strategies_result.data if strategies_result.data else []
+        }
+    except Exception as e:
+        st.error(f"Error fetching challenges/strategies: {e}")
+        return {'challenges': [], 'strategies': []}
+
+def fetch_stuck_signals(supabase: Client, organization_id: str = None):
+    """Fetch stuck signals and help offers"""
+    try:
+        stuck_result = supabase.schema('peer_progress').table('stuck_signals').select('*').order('created_at', desc=True).execute()
+        help_result = supabase.schema('peer_progress').table('help_offers').select('*').order('created_at', desc=True).execute()
+        sentiment_result = supabase.schema('peer_progress').table('call_sentiment').select('*').order('session_date', desc=True).execute()
+        
+        return {
+            'stuck_signals': stuck_result.data if stuck_result.data else [],
+            'help_offers': help_result.data if help_result.data else [],
+            'sentiment': sentiment_result.data if sentiment_result.data else []
+        }
+    except Exception as e:
+        st.error(f"Error fetching stuck signals: {e}")
+        return {'stuck_signals': [], 'help_offers': [], 'sentiment': []}
+
+def fetch_goal_source_analytics(supabase: Client, organization_id: str = None):
+    """Fetch goal source tracking analytics"""
+    try:
+        goals_result = supabase.schema('peer_progress').table('quantifiable_goals').select('created_at').execute()
+        vague_result = supabase.schema('peer_progress').table('vague_goals_detected').select('status, created_at').execute()
+        
+        return {
+            'goals': goals_result.data if goals_result.data else [],
+            'vague_goals': vague_result.data if vague_result.data else []
+        }
+    except Exception as e:
+        st.error(f"Error fetching goal source analytics: {e}")
+        return {'goals': [], 'vague_goals': []}
+
+# Tab functions
+def show_vague_goals_tab(supabase: Client):
+    """Display vague goals that need QA clarification"""
+    st.header("🚨 Vague Goals - QA Queue")
+    
+    vague_goals = fetch_vague_goals(supabase)
+    
+    if not vague_goals:
+        st.info("✅ No vague goals detected. All goals are quantifiable!")
+        return
+    
+    # Filter options
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        status_filter = st.selectbox("Filter by Status", ["All", "pending_followup", "clarified", "resolved"])
+    with col2:
+        participant_filter = st.selectbox("Filter by Participant", ["All"] + list(set([g.get('participant_name', '') for g in vague_goals])))
+    with col3:
+        date_filter = st.date_input("Filter by Date", value=None)
+    
+    # Apply filters
+    filtered_goals = vague_goals
+    if status_filter != "All":
+        filtered_goals = [g for g in filtered_goals if g.get('status') == status_filter]
+    if participant_filter != "All":
+        filtered_goals = [g for g in filtered_goals if g.get('participant_name') == participant_filter]
+    
+    st.metric("Total Vague Goals", len(filtered_goals))
+    st.metric("Pending QA Review", len([g for g in filtered_goals if g.get('status') == 'pending_followup']))
+    
+    # Display goals
+    for goal in filtered_goals:
+        with st.expander(f"🎯 {goal.get('participant_name', 'Unknown')} - {goal.get('original_goal_text', 'No goal')[:50]}..."):
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.write(f"**Original Goal:** {goal.get('original_goal_text', 'N/A')}")
+                st.write(f"**Status:** {goal.get('status', 'N/A')}")
+                st.write(f"**Created:** {goal.get('created_at', 'N/A')}")
+                
+                vagueness_reasons = goal.get('vagueness_reasons', {})
+                if vagueness_reasons:
+                    st.write("**Vagueness Reasons:**")
+                    for reason in vagueness_reasons:
+                        st.write(f"- {reason}")
+            
+            with col2:
+                st.write(f"**Source:** {goal.get('source_type', 'N/A')}")
+                st.write(f"**Updated By:** {goal.get('updated_by', 'N/A')}")
+                
+                if goal.get('status') == 'pending_followup':
+                    if st.button(f"Mark as Clarified", key=f"clarify_{goal['id']}"):
+                        # Update status to clarified
+                        try:
+                            supabase.schema('peer_progress').table('vague_goals_detected').update({
+                                'status': 'clarified',
+                                'updated_by': 'dashboard_user',
+                                'updated_at': 'now()'
+                            }).eq('id', goal['id']).execute()
+                            st.success("✅ Goal marked as clarified!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error updating goal: {e}")
+
+def show_quantifiable_goals_tab(supabase: Client):
+    """Display quantifiable goals and progress tracking"""
+    st.header("🎯 Quantifiable Goals Tracking")
+    
+    st.subheader("📅 Date Filter")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        start_date = st.date_input("Start Date", value=None)
+    with col2:
+        end_date = st.date_input("End Date", value=None)
+    with col3:
+        if st.button("Clear Date Filter"):
+            st.rerun()
+    
+    start_date_str = start_date.strftime('%Y-%m-%d') if start_date else None
+    end_date_str = end_date.strftime('%Y-%m-%d') if end_date else None
+    
+    goals = fetch_quantifiable_goals(supabase, start_date=start_date_str, end_date=end_date_str)
+    
+    if not goals:
+        st.info("📝 No quantifiable goals found for the selected date range.")
+        return
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Goals", len(goals))
+    with col2:
+        recent_goals = [g for g in goals if g.get('created_at', '') >= (datetime.now() - timedelta(days=7)).isoformat()]
+        st.metric("Goals This Week", len(recent_goals))
+    with col3:
+        unique_participants = len(set([g.get('participant_name', '') for g in goals]))
+        st.metric("Active Participants", unique_participants)
+    with col4:
+        avg_target = sum([g.get('target_number', 0) for g in goals if g.get('target_number')]) / len([g for g in goals if g.get('target_number')])
+        st.metric("Avg Target", f"{avg_target:.1f}")
+    
+    st.subheader("🔍 Additional Filters")
+    col1, col2 = st.columns(2)
+    with col1:
+        participant_filter = st.selectbox("Filter by Participant", ["All"] + list(set([g.get('participant_name', '') for g in goals])))
+    with col2:
+        source_filter = st.selectbox("Filter by Source", ["All"] + list(set([g.get('source_type', '') for g in goals])))
+    
+    filtered_goals = goals
+    if participant_filter != "All":
+        filtered_goals = [g for g in filtered_goals if g.get('participant_name') == participant_filter]
+    if source_filter != "All":
+        filtered_goals = [g for g in filtered_goals if g.get('source_type') == source_filter]
+    
+    # Display goals
+    st.subheader(f"📋 Goals ({len(filtered_goals)} found)")
+    for goal in filtered_goals:
+        call_date = goal.get('call_date', 'N/A')
+        participant_name = goal.get('participant_name', 'Unknown')
+        goal_text = goal.get('goal_text', 'No goal')
+        
+        with st.expander(f"🎯 {participant_name} - {goal_text[:50]}... ({call_date})"):
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.write(f"**Goal:** {goal_text}")
+                st.write(f"**Target:** {goal.get('target_number', 'N/A')}")
+                st.write(f"**Call Date:** {call_date}")
+                st.write(f"**Group:** {goal.get('group_name', 'N/A')}")
+                st.write(f"**Created:** {goal.get('created_at', 'N/A')}")
+                
+            with col2:
+                st.write(f"**Source:** {goal.get('source_type', 'N/A')}")
+                st.write(f"**Updated By:** {goal.get('updated_by', 'N/A')}")
+                
+                # Progress tracking (placeholder - would need actual progress data)
+                progress = st.slider("Progress (%)", 0, 100, 0, key=f"progress_{goal['id']}")
+                if st.button("Update Progress", key=f"update_{goal['id']}"):
+                    st.info("Progress update functionality would be implemented here")
+
+def show_community_posting_tab(supabase: Client):
+    """Display community posting activity"""
+    st.header("📢 Community Goals Posting")
+    
+    posts = fetch_community_posts(supabase)
+    
+    if not posts:
+        st.info("📝 No community posts found.")
+        return
+    
+    # Summary metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Posts", len(posts))
+    with col2:
+        successful_posts = len([p for p in posts if p.get('status') == 'success'])
+        st.metric("Successful Posts", successful_posts)
+    with col3:
+        platforms = list(set([p.get('platform', '') for p in posts]))
+        st.metric("Platforms Used", len(platforms))
+    
+    # Recent posts
+    st.subheader("Recent Posts")
+    for post in posts[:10]:  # Show last 10 posts
+        with st.expander(f"📢 {post.get('platform', 'Unknown Platform')} - {post.get('created_at', 'N/A')}"):
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.write(f"**Platform:** {post.get('platform', 'N/A')}")
+                st.write(f"**Content:** {post.get('content', 'N/A')}")
+                st.write(f"**Status:** {post.get('status', 'N/A')}")
+                
+            with col2:
+                st.write(f"**Channel:** {post.get('channel', 'N/A')}")
+                st.write(f"**Posted At:** {post.get('posted_at', 'N/A')}")
+                
+                if post.get('status') == 'failed':
+                    st.error("❌ Post failed")
+
+def show_attendance_achievement_tab(supabase: Client):
+    """Display attendance and goal achievement tracking"""
+    st.header("📊 Attendance & Goal Achievement")
+    
+    attendance_data = fetch_member_attendance(supabase)
+    
+    if not attendance_data:
+        st.info("📝 No attendance data found.")
+        return
+    
+    # Convert to DataFrame for easier analysis
+    df = pd.DataFrame(attendance_data)
+    
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Sessions", len(df))
+    with col2:
+        avg_attendance = df['attended'].mean() * 100 if 'attended' in df.columns else 0
+        st.metric("Avg Attendance %", f"{avg_attendance:.1f}%")
+    with col3:
+        unique_members = df['member_id'].nunique() if 'member_id' in df.columns else 0
+        st.metric("Unique Members", unique_members)
+    with col4:
+        recent_sessions = len(df[df['call_date'] >= (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')])
+        st.metric("Sessions This Week", recent_sessions)
+    
+    # Attendance chart
+    if 'call_date' in df.columns and 'attendance_status' in df.columns:
+        st.subheader("Attendance Over Time")
+        # Convert attendance_status to numeric for chart
+        df['attended_numeric'] = df['attendance_status'].map({'present': 1, 'absent': 0, 'excused': 0.5})
+        attendance_by_date = df.groupby('call_date')['attended_numeric'].mean().reset_index()
+        fig = px.line(attendance_by_date, x='call_date', y='attended_numeric', 
+                     title="Attendance Rate Over Time")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Member attendance table
+    if 'member_name' in df.columns:
+        st.subheader("Member Attendance Summary")
+        # Convert attendance_status to numeric for aggregation
+        df['attended_numeric'] = df['attendance_status'].map({'present': 1, 'absent': 0, 'excused': 0.5})
+        member_summary = df.groupby('member_name').agg({
+            'attended_numeric': ['count', 'sum', 'mean']
+        }).round(2)
+        member_summary.columns = ['Total Sessions', 'Present Sessions', 'Attendance Rate']
+        st.dataframe(member_summary)
+
+def show_member_changes_tab(supabase: Client):
+    """Display member change log"""
+    st.header("📝 Member Change Log")
+    
+    changes = fetch_member_changes(supabase)
+    
+    if not changes:
+        st.info("📝 No member changes found.")
+        return
+    
+    # Summary metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Changes", len(changes))
+    with col2:
+        recent_changes = len([c for c in changes if c.get('created_at', '') >= (datetime.now() - timedelta(days=7)).isoformat()])
+        st.metric("Changes This Week", recent_changes)
+    with col3:
+        change_types = list(set([c.get('change_type', '') for c in changes]))
+        st.metric("Change Types", len(change_types))
+    
+    # Filter options
+    col1, col2 = st.columns(2)
+    with col1:
+        change_type_filter = st.selectbox("Filter by Change Type", ["All"] + change_types)
+    with col2:
+        member_filter = st.selectbox("Filter by Member", ["All"] + list(set([c.get('member_name', '') for c in changes])))
+    
+    # Apply filters
+    filtered_changes = changes
+    if change_type_filter != "All":
+        filtered_changes = [c for c in filtered_changes if c.get('change_type') == change_type_filter]
+    if member_filter != "All":
+        filtered_changes = [c for c in filtered_changes if c.get('member_name') == member_filter]
+    
+    # Display changes
+    for change in filtered_changes:
+        with st.expander(f"📝 {change.get('member_name', 'Unknown')} - {change.get('change_type', 'N/A')} ({change.get('created_at', 'N/A')})"):
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.write(f"**Change Type:** {change.get('change_type', 'N/A')}")
+                st.write(f"**Description:** {change.get('description', 'N/A')}")
+                st.write(f"**Previous Value:** {change.get('previous_value', 'N/A')}")
+                st.write(f"**New Value:** {change.get('new_value', 'N/A')}")
+                
+            with col2:
+                st.write(f"**Category:** {change.get('change_category', 'N/A')}")
+                st.write(f"**Created:** {change.get('created_at', 'N/A')}")
+                st.write(f"**Source:** {change.get('source_type', 'N/A')}")
+
+def show_marketing_activities_tab(supabase: Client):
+    """Display marketing activities and pipeline outcomes"""
+    st.header("📈 Marketing Activities & Pipeline")
+    
+    activities = fetch_marketing_activities(supabase)
+    
+    if not activities:
+        st.info("📝 No marketing activities found.")
+        return
+    
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Activities", len(activities))
+    with col2:
+        unique_participants = len(set([a.get('participant_name', '') for a in activities]))
+        st.metric("Active Participants", unique_participants)
+    with col3:
+        activities_by_type = {}
+        for activity in activities:
+            activity_type = activity.get('activity_category', 'Unknown')
+            activities_by_type[activity_type] = activities_by_type.get(activity_type, 0) + 1
+        st.metric("Activity Types", len(activities_by_type))
+    with col4:
+        recent_activities = len([a for a in activities if a.get('session_date', '') >= (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')])
+        st.metric("Activities This Week", recent_activities)
+    
+    # Activity type breakdown
+    if activities_by_type:
+        st.subheader("Activity Type Breakdown")
+        fig = px.pie(values=list(activities_by_type.values()), 
+                     names=list(activities_by_type.keys()),
+                     title="Marketing Activities by Type")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Recent activities table
+    st.subheader("Recent Activities")
+    df = pd.DataFrame(activities)
+    if not df.empty:
+        st.dataframe(df[['participant_name', 'activity_category', 'activity_description', 'session_date']].head(10))
+
+def show_challenges_strategies_tab(supabase: Client):
+    """Display challenges and strategies"""
+    st.header("🧠 Challenges & Strategies")
+    
+    data = fetch_challenges_strategies(supabase)
+    challenges = data['challenges']
+    strategies = data['strategies']
+    
+    if not challenges and not strategies:
+        st.info("📝 No challenges or strategies found.")
+        return
+    
+    # Summary metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Challenges", len(challenges))
+    with col2:
+        st.metric("Total Strategies", len(strategies))
+    with col3:
+        unique_categories = len(set([c.get('category', '') for c in challenges]))
+        st.metric("Challenge Categories", unique_categories)
+    
+    # Challenge categories breakdown
+    if challenges:
+        challenge_categories = {}
+        for challenge in challenges:
+            category = challenge.get('category', 'Unknown')
+            challenge_categories[category] = challenge_categories.get(category, 0) + 1
+        
+        st.subheader("Challenge Categories")
+        fig = px.bar(x=list(challenge_categories.keys()), 
+                     y=list(challenge_categories.values()),
+                     title="Challenges by Category")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Recent challenges
+    if challenges:
+        st.subheader("Recent Challenges")
+        for challenge in challenges[:5]:  # Show last 5 challenges
+            with st.expander(f"🧠 {challenge.get('participant_name', 'Unknown')} - {challenge.get('challenge_description', 'No description')[:50]}..."):
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    st.write(f"**Challenge:** {challenge.get('challenge_description', 'N/A')}")
+                    st.write(f"**Category:** {challenge.get('category', 'N/A')}")
+                    st.write(f"**Date:** {challenge.get('session_date', 'N/A')}")
+                    
+                with col2:
+                    st.write(f"**Severity:** {challenge.get('severity_level', 'N/A')}")
+                    st.write(f"**Status:** {challenge.get('status', 'N/A')}")
+
+def show_stuck_frustrated_supported_tab(supabase: Client):
+    """Display stuck signals, help offers, and sentiment analysis"""
+    st.header("🚨 Group Health: Stuck/Frustrated/Supported")
+    
+    data = fetch_stuck_signals(supabase)
+    stuck_signals = data['stuck_signals']
+    help_offers = data['help_offers']
+    sentiment_data = data['sentiment']
+    
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Stuck Signals", len(stuck_signals))
+    with col2:
+        st.metric("Help Offers", len(help_offers))
+    with col3:
+        avg_sentiment = sum([s.get('sentiment_score', 3) for s in sentiment_data]) / len(sentiment_data) if sentiment_data else 3
+        st.metric("Avg Sentiment", f"{avg_sentiment:.1f}/5")
+    with col4:
+        critical_flags = len([s for s in sentiment_data if s.get('sentiment_score', 3) <= 2])
+        st.metric("Critical Flags", critical_flags)
+    
+    # Sentiment over time
+    if sentiment_data:
+        st.subheader("Sentiment Over Time")
+        sentiment_df = pd.DataFrame(sentiment_data)
+        fig = px.line(sentiment_df, x='session_date', y='sentiment_score',
+                     title="Call Sentiment Score Over Time")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Recent stuck signals
+    if stuck_signals:
+        st.subheader("Recent Stuck Signals")
+        for signal in stuck_signals[:5]:  # Show last 5
+            with st.expander(f"🚨 {signal.get('participant_name', 'Unknown')} - {signal.get('stuck_classification', 'Unknown Type')}"):
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    st.write(f"**Summary:** {signal.get('stuck_summary', 'N/A')}")
+                    st.write(f"**Classification:** {signal.get('stuck_classification', 'N/A')}")
+                    st.write(f"**Suggested Nudge:** {signal.get('suggested_nudge', 'N/A')}")
+                    
+                with col2:
+                    st.write(f"**Severity:** {signal.get('severity_score', 'N/A')}")
+                    st.write(f"**Date:** {signal.get('session_date', 'N/A')}")
+    
+    # Recent help offers
+    if help_offers:
+        st.subheader("Recent Help Offers")
+        for offer in help_offers[:5]:  # Show last 5
+            with st.expander(f"🤝 {offer.get('offerer_name', 'Unknown')} offered help"):
+                st.write(f"**What They Offered:** {offer.get('help_description', 'N/A')}")
+                st.write(f"**Classification:** {offer.get('classification', 'N/A')}")
+                st.write(f"**Target:** {offer.get('target_participant', 'N/A')}")
+
+def show_goal_source_tracking_tab(supabase: Client):
+    """Display goal source tracking analytics"""
+    st.header("📊 Goal Source Tracking")
+    
+    data = fetch_goal_source_analytics(supabase)
+    goals = data['goals']
+    vague_goals = data['vague_goals']
+    
+    if not goals and not vague_goals:
+        st.info("📝 No goal source data found.")
+        return
+    
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Goals", len(goals))
+    with col2:
+        st.metric("Vague Goals", len(vague_goals))
+    with col3:
+        recent_goals = len([g for g in goals if g.get('created_at', '') >= (datetime.now() - timedelta(days=7)).isoformat()])
+        st.metric("Goals This Week", recent_goals)
+    with col4:
+        resolved_vague = len([g for g in vague_goals if g.get('status') == 'resolved'])
+        st.metric("Resolved Vague Goals", resolved_vague)
+    
+    # Goal activity over time
+    if goals:
+        st.subheader("Goal Creation Over Time")
+        goals_df = pd.DataFrame(goals)
+        goals_df['created_at'] = pd.to_datetime(goals_df['created_at'])
+        goals_by_date = goals_df.groupby(goals_df['created_at'].dt.date).size().reset_index()
+        goals_by_date.columns = ['Date', 'Goals Created']
+        
+        fig = px.line(goals_by_date, x='Date', y='Goals Created', 
+                     title="Goals Created Over Time")
+        st.plotly_chart(fig, use_container_width=True)
+
+# Main dashboard
+def main():
+    st.title("🎯 Goal Extractor Dashboard")
+    st.markdown("Comprehensive analytics for mastermind group goal tracking and analysis")
+    
+    # Initialize Supabase
+    supabase = init_supabase()
+    if not supabase:
+        return
+    
+    # Sidebar
+    st.sidebar.title("📊 Dashboard")
+    st.sidebar.markdown("Select a tab to view different analytics:")
+    
+    # Main tabs
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🚨 Vague Goals", 
+        "🎯 Quantifiable Goals", 
+        "📢 Community Posting",
+        "📊 Attendance & Achievement",
+        "📝 Member Changes"
+    ])
+    
+    tab6, tab7, tab8, tab9 = st.tabs([
+        "📈 Marketing Activities",
+        "🧠 Challenges & Strategies", 
+        "🚨 Group Health",
+        "📊 Source Tracking"
+    ])
+    
+    with tab1:
+        show_vague_goals_tab(supabase)
+    
+    with tab2:
+        show_quantifiable_goals_tab(supabase)
+    
+    with tab3:
+        show_community_posting_tab(supabase)
+    
+    with tab4:
+        show_attendance_achievement_tab(supabase)
+    
+    with tab5:
+        show_member_changes_tab(supabase)
+    
+    with tab6:
+        show_marketing_activities_tab(supabase)
+    
+    with tab7:
+        show_challenges_strategies_tab(supabase)
+    
+    with tab8:
+        show_stuck_frustrated_supported_tab(supabase)
+    
+    with tab9:
+        show_goal_source_tracking_tab(supabase)
+    
+    # Footer
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**Data Sources:** Supabase PostgreSQL")
+    st.sidebar.markdown("**Last Updated:** " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+if __name__ == "__main__":
+    main()
