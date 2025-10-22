@@ -68,10 +68,17 @@ EXTRACT_QUANTIFIABLE_GOALS = """
 **Output Format:**
 ### [Participant Name]
 **Goals with Numbers:**
-[Goal 1: "I will make 5 sales calls this week"]
-[Goal 2: "Post 3 times on LinkedIn"]
+[Goal 1: "Complete goal text with numbers here"]
+[Goal 2: "Another complete goal text"]
 [If none: "No specific numbers mentioned"]
 ---
+
+**Important Rules:**
+- Include the COMPLETE goal text, don't truncate
+- Use proper quotes around the entire goal text
+- Don't break goals across multiple lines
+- If a goal contains brackets or special characters, include them in the quoted text
+- Example: [Goal 1: "Pull a two hour block twice a week to dedicate to networking"]
 
 Transcript:
 {transcript}

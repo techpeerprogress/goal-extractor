@@ -594,16 +594,29 @@ class TranscriptProcessor:
             
             # Extract goal text with numbers
             elif line.startswith('[Goal') and ']' in line:
-                goal_text = line.replace('[Goal ', '').replace(']', '').strip()
-                if goal_text and goal_text != "No specific numbers mentioned":
-                    # Extract number from goal text
-                    number_match = re.search(r'(\d+(?:\.\d+)?)', goal_text)
-                    if number_match:
-                        goal_data = {
-                            'goal_text': goal_text,
-                            'target_number': float(number_match.group(1))
-                        }
-                        current_goals.append(goal_data)
+                # Find the first closing bracket after [Goal
+                start_idx = line.find('[Goal')
+                bracket_idx = line.find(']', start_idx)
+                
+                if bracket_idx != -1:
+                    # Extract everything after the first ] (which closes the [Goal tag)
+                    goal_text = line[bracket_idx + 1:].strip()
+                    
+                    # Clean up any leading colons or quotes
+                    if goal_text.startswith(':'):
+                        goal_text = goal_text[1:].strip()
+                    if goal_text.startswith('"') and goal_text.endswith('"'):
+                        goal_text = goal_text[1:-1].strip()
+                    
+                    if goal_text and goal_text != "No specific numbers mentioned":
+                        # Extract number from goal text
+                        number_match = re.search(r'(\d+(?:\.\d+)?)', goal_text)
+                        if number_match:
+                            goal_data = {
+                                'goal_text': goal_text,
+                                'target_number': float(number_match.group(1))
+                            }
+                            current_goals.append(goal_data)
         
         # Add the last participant if exists
         if current_participant and current_goals:
