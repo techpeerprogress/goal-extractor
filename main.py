@@ -788,21 +788,21 @@ class TranscriptProcessor:
                        'call_date': goal_data['call_date'],
                        'goal_text': goal.get('goal_text'),
                        'target_number': goal.get('target_number')
-                   }
+                }
                    
-                   # Add source tracking columns if they exist
-                   try:
-                       goal_record.update({
-                           'source_type': 'ai_extraction',
-                           'source_details': {
-                               'extraction_method': 'ai_transcript_analysis',
-                               'transcript_session_id': transcript_session_id,
-                               'confidence_score': goal.get('confidence_score', 0.8)
-                           },
-                           'updated_by': 'ai_system'
-                       })
-                   except:
-                       pass  # Columns don't exist yet, skip source tracking
+                # Add source tracking columns if they exist
+                try:
+                    goal_record.update({
+                        'source_type': 'ai_extraction',
+                        'source_details': {
+                            'extraction_method': 'ai_transcript_analysis',
+                            'transcript_session_id': transcript_session_id,
+                            'confidence_score': goal.get('confidence_score', 0.8)
+                        },
+                        'updated_by': 'ai_system'
+                    })
+                except:
+                    pass  # Columns don't exist yet, skip source tracking
                 
                 result = self.supabase.schema('peer_progress').table('quantifiable_goals').insert(goal_record).execute()
                 
