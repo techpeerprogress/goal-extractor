@@ -48,13 +48,10 @@ class TranscriptProcessor:
         self.community_config = self._load_community_config()
     
     def _initialize_google_drive(self):
-        """Initialize Google Drive service with service account credentials"""
         try:
-            # Load service account credentials from environment variable or file
             service_account_info = json.loads(os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON', '{}'))
             
             if not service_account_info:
-                # Alternative: Load from file path
                 service_account_file = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE')
                 if service_account_file and os.path.exists(service_account_file):
                     with open(service_account_file, 'r') as f:
@@ -75,13 +72,11 @@ class TranscriptProcessor:
             return None
     
     def get_october_transcripts(self, folder_url: str = None) -> List[Dict]:
-        """Get all transcript files from October in the specified Google Drive folder"""
         try:
             folder_id = self._extract_folder_id(folder_url or os.getenv('GOOGLE_DRIVE_FOLDER_URL'))
             if not folder_id:
                 raise Exception("Could not extract folder ID from URL")
             
-            # First, find the October 2025 folder
             october_folder_query = f"'{folder_id}' in parents and name='OCTOBER 2025 TRANSCRIPTS' and mimeType='application/vnd.google-apps.folder'"
             october_results = self.drive_service.files().list(
                 q=october_folder_query,
@@ -96,7 +91,6 @@ class TranscriptProcessor:
             october_folder_id = october_folders[0]['id']
             print(f"Found October folder: {october_folder_id}")
             
-            # Get all subfolders in October folder
             subfolder_query = f"'{october_folder_id}' in parents and mimeType='application/vnd.google-apps.folder'"
             subfolder_results = self.drive_service.files().list(
                 q=subfolder_query,
@@ -107,25 +101,20 @@ class TranscriptProcessor:
             print(f"Found {len(subfolders)} October subfolders")
             
             all_files = []
+            file_types = [
+                'application/vnd.google-apps.document',
+                'application/pdf', 
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            ]
             
-            # Search each subfolder for transcript files with simpler queries
             for subfolder in subfolders:
                 subfolder_id = subfolder['id']
                 subfolder_name = subfolder['name']
-                
                 print(f"Searching {subfolder_name}...")
-                
-                # Try different file types separately to avoid complex queries
-                file_types = [
-                    'application/vnd.google-apps.document',
-                    'application/pdf', 
-                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                ]
                 
                 for mime_type in file_types:
                     try:
                         query = f"'{subfolder_id}' in parents and mimeType='{mime_type}'"
-                        
                         results = self.drive_service.files().list(
                             q=query,
                             fields="files(id, name, mimeType, createdTime, modifiedTime)",
@@ -136,7 +125,6 @@ class TranscriptProcessor:
                         if files:
                             print(f"  Found {len(files)} {mime_type.split('/')[-1]} files")
                             all_files.extend(files)
-                            
                     except Exception as e:
                         print(f"  Error searching for {mime_type}: {e}")
                         continue
@@ -149,15 +137,13 @@ class TranscriptProcessor:
             return []
     
     def _extract_folder_id(self, folder_url: str) -> str:
-        """Extract folder ID from Google Drive URL"""
         if not folder_url:
             return None
         
-        # Handle different URL formats
         patterns = [
             r'https://drive\.google\.com/drive/folders/([a-zA-Z0-9_-]+)',
             r'https://docs\.google\.com/document/d/([a-zA-Z0-9_-]+)',
-            r'([a-zA-Z0-9_-]{25,})'  # Direct ID
+            r'([a-zA-Z0-9_-]{25,})'
         ]
         
         for pattern in patterns:
@@ -165,10 +151,9 @@ class TranscriptProcessor:
             if match:
                 return match.group(1)
         
-        return folder_url  # Assume it's already an ID
+        return folder_url
     
     def download_and_read_file(self, file_id: str, file_name: str, mime_type: str) -> str:
-        """Download and read content from Google Drive file"""
         try:
             if mime_type == 'application/vnd.google-apps.document':
                 return self._export_google_doc(file_id)
@@ -185,7 +170,6 @@ class TranscriptProcessor:
             return ""
     
     def _export_google_doc(self, file_id: str) -> str:
-        """Export Google Doc as text"""
         try:
             request = self.drive_service.files().export_media(
                 fileId=file_id,

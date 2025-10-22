@@ -16,20 +16,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize Supabase connection
 @st.cache_resource
 def init_supabase():
-    """Initialize Supabase client with cached connection"""
     try:
-        # Ensure .env is loaded
         from dotenv import load_dotenv
         load_dotenv()
         
-        # Try environment variables first, then Streamlit secrets
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
         
-        # If not found in env vars, try Streamlit secrets
         if not supabase_url:
             try:
                 supabase_url = st.secrets["SUPABASE_URL"]
