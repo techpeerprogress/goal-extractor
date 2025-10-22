@@ -108,28 +108,38 @@ class TranscriptProcessor:
             
             all_files = []
             
-            # Search each subfolder for transcript files
+            # Search each subfolder for transcript files with simpler queries
             for subfolder in subfolders:
                 subfolder_id = subfolder['id']
                 subfolder_name = subfolder['name']
                 
-                # Query for transcript files in this subfolder
-                query = (
-                    f"'{subfolder_id}' in parents and "
-                    "(mimeType='application/vnd.google-apps.document' or "
-                    "mimeType='application/pdf' or "
-                    "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document')"
-                )
+                print(f"Searching {subfolder_name}...")
                 
-                results = self.drive_service.files().list(
-                    q=query,
-                    fields="files(id, name, mimeType, createdTime, modifiedTime)",
-                    orderBy="name"
-                ).execute()
+                # Try different file types separately to avoid complex queries
+                file_types = [
+                    'application/vnd.google-apps.document',
+                    'application/pdf', 
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                ]
                 
-                files = results.get('files', [])
-                print(f"Found {len(files)} files in {subfolder_name}")
-                all_files.extend(files)
+                for mime_type in file_types:
+                    try:
+                        query = f"'{subfolder_id}' in parents and mimeType='{mime_type}'"
+                        
+                        results = self.drive_service.files().list(
+                            q=query,
+                            fields="files(id, name, mimeType, createdTime, modifiedTime)",
+                            orderBy="name"
+                        ).execute()
+                        
+                        files = results.get('files', [])
+                        if files:
+                            print(f"  Found {len(files)} {mime_type.split('/')[-1]} files")
+                            all_files.extend(files)
+                            
+                    except Exception as e:
+                        print(f"  Error searching for {mime_type}: {e}")
+                        continue
             
             print(f"Total found {len(all_files)} October transcript files")
             return all_files
@@ -594,27 +604,33 @@ class TranscriptProcessor:
             
             # Extract goal text with numbers
             elif line.startswith('[Goal') and ']' in line:
-                # Find the first closing bracket after [Goal
-                start_idx = line.find('[Goal')
-                bracket_idx = line.find(']', start_idx)
+                # Find the last closing bracket (which closes the entire [Goal X: "..."] structure)
+                bracket_idx = line.rfind(']')
                 
                 if bracket_idx != -1:
-                    # Extract everything after the first ] (which closes the [Goal tag)
-                    goal_text = line[bracket_idx + 1:].strip()
-                    
-                    # Clean up any leading colons or quotes
-                    if goal_text.startswith(':'):
-                        goal_text = goal_text[1:].strip()
-                    if goal_text.startswith('"') and goal_text.endswith('"'):
-                        goal_text = goal_text[1:-1].strip()
-                    
-                    if goal_text and goal_text != "No specific numbers mentioned":
-                        # Extract number from goal text
-                        number_match = re.search(r'(\d+(?:\.\d+)?)', goal_text)
-                        if number_match:
+                    # Extract everything between the first : and the last ]
+                    colon_idx = line.find(':', line.find('[Goal'))
+                    if colon_idx != -1:
+                        goal_text = line[colon_idx + 1:bracket_idx].strip()
+                        
+                        # Clean up any leading colons or quotes
+                        if goal_text.startswith(':'):
+                            goal_text = goal_text[1:].strip()
+                        if goal_text.startswith('"') and goal_text.endswith('"'):
+                            goal_text = goal_text[1:-1].strip()
+                        
+                        if goal_text and goal_text not in ["No specific numbers mentioned", "No specific commitments mentioned"] and not goal_text.startswith("[If none:") and goal_text != "No specific commitments mentioned":
+                            # Extract number from goal text if available
+                            number_match = re.search(r'(\d+(?:\.\d+)?)', goal_text)
+                            if number_match:
+                                target_number = float(number_match.group(1))
+                            else:
+                                # Default to 1 for goals without specific numbers
+                                target_number = 1.0
+                            
                             goal_data = {
                                 'goal_text': goal_text,
-                                'target_number': float(number_match.group(1))
+                                'target_number': target_number
                             }
                             current_goals.append(goal_data)
         

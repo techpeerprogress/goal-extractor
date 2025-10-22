@@ -63,22 +63,36 @@ Extracted Commitments:
 EXTRACT_QUANTIFIABLE_GOALS = """
 # Extract Quantifiable Goals
 
-**Task:** Find goals with specific numbers or measurable outcomes.
+**Task:** Find ANY commitments, plans, or goals mentioned by participants, even if they don't have specific numbers.
+
+**Look for:**
+- Explicit commitments: "I will do X", "I'm going to do Y"
+- Conversational commitments: "this week I'll...", "next week I'm planning to..."
+- Time-based goals: "by Friday", "this week", "next week", "daily", "weekly"
+- Action items: "I need to...", "I should...", "I plan to..."
+- Any mention of future actions or plans
 
 **Output Format:**
 ### [Participant Name]
 **Goals with Numbers:**
-[Goal 1: "Complete goal text with numbers here"]
-[Goal 2: "Another complete goal text"]
-[If none: "No specific numbers mentioned"]
+[Goal 1: "Complete goal text here"]
+[Goal 2: "Another goal text"]
+[Goal 3: "Third goal text"]
+[If none: "No specific commitments mentioned"]
 ---
 
+**CRITICAL:** Each goal MUST be on its own line starting with [Goal X: and ending with ]
+
 **Important Rules:**
+- Include ANY commitment or plan, even without specific numbers
+- Use the exact words from the transcript
 - Include the COMPLETE goal text, don't truncate
 - Use proper quotes around the entire goal text
 - Don't break goals across multiple lines
-- If a goal contains brackets or special characters, include them in the quoted text
-- Example: [Goal 1: "Pull a two hour block twice a week to dedicate to networking"]
+- Be very inclusive - capture any future action mentioned
+- Example: [Goal 1: "I'm going to have difficult conversations this week"]
+- Example: [Goal 2: "Next week I'll come back and let you know where we are"]
+- Example: [Goal 3: "I plan to create a campaign before the end of this week"]
 
 Transcript:
 {transcript}
