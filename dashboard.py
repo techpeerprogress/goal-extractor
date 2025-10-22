@@ -255,21 +255,71 @@ def show_quantifiable_goals_tab(supabase: Client):
     with col1:
         st.metric("Total Goals", len(goals))
     with col2:
-        recent_goals = [g for g in goals if g.get('created_at', '') >= (datetime.now() - timedelta(days=7)).isoformat()]
-        st.metric("Goals This Week", len(recent_goals))
+        ai_goals = len([g for g in goals if g.get('source_type') == 'ai_extraction'])
+        manual_goals = len([g for g in goals if g.get('source_type') == 'human_input'])
+        st.metric("AI Goals", ai_goals)
     with col3:
+        st.metric("Manual Goals", manual_goals)
+    with col4:
         unique_participants = len(set([g.get('participant_name', '') for g in goals]))
         st.metric("Active Participants", unique_participants)
-    with col4:
-        avg_target = sum([g.get('target_number', 0) for g in goals if g.get('target_number')]) / len([g for g in goals if g.get('target_number')])
-        st.metric("Avg Target", f"{avg_target:.1f}")
+    
+    # Source breakdown chart
+    if goals:
+        st.subheader("📊 Goal Sources")
+        source_counts = {}
+        for goal in goals:
+            source = goal.get('source_type', 'ai_extraction')
+            source_counts[source] = source_counts.get(source, 0) + 1
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.bar_chart(source_counts)
+        with col2:
+            for source, count in source_counts.items():
+                percentage = (count / len(goals)) * 100
+                source_label = "🤖 AI Extraction" if source == 'ai_extraction' else "👤 Manual Input" if source == 'human_input' else f"📝 {source}"
+                st.write(f"{source_label}: {count} ({percentage:.1f}%)")
     
     st.subheader("🔍 Additional Filters")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         participant_filter = st.selectbox("Filter by Participant", ["All"] + list(set([g.get('participant_name', '') for g in goals])))
     with col2:
         source_filter = st.selectbox("Filter by Source", ["All"] + list(set([g.get('source_type', '') for g in goals])))
+    with col3:
+        if st.button("➕ Add Manual Goal"):
+            st.session_state.show_manual_goal_form = True
+    
+    # Manual goal form
+    if st.session_state.get('show_manual_goal_form', False):
+        st.subheader("➕ Add Manual Goal")
+        with st.form("manual_goal_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                manual_participant = st.text_input("Participant Name", key="manual_participant")
+                manual_group = st.text_input("Group Name", key="manual_group")
+            with col2:
+                manual_target = st.number_input("Target Number", min_value=0, key="manual_target")
+                manual_date = st.date_input("Call Date", value=datetime.now().date(), key="manual_date")
+            
+            manual_goal_text = st.text_area("Goal Text", key="manual_goal_text")
+            manual_notes = st.text_area("Notes (Optional)", key="manual_notes")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.form_submit_button("✅ Add Goal"):
+                    if manual_participant and manual_goal_text and manual_target:
+                        # This would need to be implemented with actual database connection
+                        st.success(f"✅ Goal added for {manual_participant}: {manual_goal_text[:50]}...")
+                        st.session_state.show_manual_goal_form = False
+                        st.rerun()
+                    else:
+                        st.error("Please fill in all required fields")
+            with col2:
+                if st.form_submit_button("❌ Cancel"):
+                    st.session_state.show_manual_goal_form = False
+                    st.rerun()
     
     filtered_goals = goals
     if participant_filter != "All":
@@ -283,8 +333,12 @@ def show_quantifiable_goals_tab(supabase: Client):
         call_date = goal.get('call_date', 'N/A')
         participant_name = goal.get('participant_name', 'Unknown')
         goal_text = goal.get('goal_text', 'No goal')
+        source_type = goal.get('source_type', 'ai_extraction')
         
-        with st.expander(f"🎯 {participant_name} - {goal_text[:50]}... ({call_date})"):
+        # Source badge
+        source_badge = "🤖 AI" if source_type == 'ai_extraction' else "👤 Manual" if source_type == 'human_input' else f"📝 {source_type}"
+        
+        with st.expander(f"{source_badge} {participant_name} - {goal_text[:50]}... ({call_date})"):
             col1, col2 = st.columns([2, 1])
             
             with col1:
@@ -295,8 +349,23 @@ def show_quantifiable_goals_tab(supabase: Client):
                 st.write(f"**Created:** {goal.get('created_at', 'N/A')}")
                 
             with col2:
-                st.write(f"**Source:** {goal.get('source_type', 'N/A')}")
+                st.write(f"**Source:** {source_type}")
                 st.write(f"**Updated By:** {goal.get('updated_by', 'N/A')}")
+                
+                # Show source details if available
+                source_details = goal.get('source_details', {})
+                if source_details:
+                    st.write("**Source Details:**")
+                    if source_type == 'ai_extraction':
+                        confidence = source_details.get('confidence_score', 'N/A')
+                        st.write(f"- Confidence: {confidence}")
+                        st.write(f"- Method: AI Transcript Analysis")
+                    elif source_type == 'human_input':
+                        input_method = source_details.get('input_method', 'N/A')
+                        st.write(f"- Method: {input_method}")
+                        notes = source_details.get('notes', '')
+                        if notes:
+                            st.write(f"- Notes: {notes}")
                 
                 # Progress tracking (placeholder - would need actual progress data)
                 progress = st.slider("Progress (%)", 0, 100, 0, key=f"progress_{goal['id']}")

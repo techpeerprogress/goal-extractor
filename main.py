@@ -753,7 +753,7 @@ class TranscriptProcessor:
             return False
     
     def store_quantifiable_goals(self, goal_data: Dict, transcript_session_id: str):
-        """Store quantifiable goals for a participant"""
+        """Store quantifiable goals for a participant with AI source tracking"""
         try:
             member = self.get_member_by_name(goal_data['participant_name'])
             member_id = member['id'] if member else None
@@ -774,7 +774,14 @@ class TranscriptProcessor:
                     'group_name': goal_data['group_name'],
                     'call_date': goal_data['call_date'],
                     'goal_text': goal.get('goal_text'),
-                    'target_number': goal.get('target_number')
+                    'target_number': goal.get('target_number'),
+                    'source_type': 'ai_extraction',
+                    'source_details': {
+                        'extraction_method': 'ai_transcript_analysis',
+                        'transcript_session_id': transcript_session_id,
+                        'confidence_score': goal.get('confidence_score', 0.8)
+                    },
+                    'updated_by': 'ai_system'
                 }
                 
                 result = self.supabase.schema('peer_progress').table('quantifiable_goals').insert(goal_record).execute()
@@ -786,7 +793,12 @@ class TranscriptProcessor:
                         'member_id': member_id,
                         'current_value': 0,
                         'target_value': goal.get('target_number'),
-                        'status': 'not_started'
+                        'status': 'not_started',
+                        'source_type': 'ai_extraction',
+                        'source_details': {
+                            'initial_setup': True,
+                            'transcript_session_id': transcript_session_id
+                        }
                     }
                     self.supabase.schema('peer_progress').table('goal_progress_tracking').insert(progress_data).execute()
             
@@ -797,6 +809,59 @@ class TranscriptProcessor:
             return False
     
     
+    def add_manual_goal(self, goal_data: Dict, updated_by: str) -> bool:
+        """Add a manually input goal with human_input source tracking"""
+        try:
+            member = self.get_member_by_name(goal_data['participant_name'])
+            member_id = member['id'] if member else None
+            
+            goal_record = {
+                'member_id': member_id,
+                'organization_id': self.organization_id,
+                'participant_name': goal_data['participant_name'],
+                'group_name': goal_data.get('group_name', 'Manual Input'),
+                'call_date': goal_data.get('call_date', datetime.now().strftime('%Y-%m-%d')),
+                'goal_text': goal_data['goal_text'],
+                'target_number': goal_data['target_number'],
+                'source_type': 'human_input',
+                'source_details': {
+                    'input_method': 'manual_entry',
+                    'input_source': 'dashboard',
+                    'input_timestamp': datetime.now().isoformat(),
+                    'notes': goal_data.get('notes', '')
+                },
+                'updated_by': updated_by
+            }
+            
+            result = self.supabase.schema('peer_progress').table('quantifiable_goals').insert(goal_record).execute()
+            
+            if result.data:
+                progress_data = {
+                    'quantifiable_goal_id': result.data[0]['id'],
+                    'organization_id': self.organization_id,
+                    'member_id': member_id,
+                    'current_value': 0,
+                    'target_value': goal_data['target_number'],
+                    'status': 'not_started',
+                    'source_type': 'human_input',
+                    'source_details': {
+                        'initial_setup': True,
+                        'manual_entry': True,
+                        'created_by': updated_by
+                    }
+                }
+                self.supabase.schema('peer_progress').table('goal_progress_tracking').insert(progress_data).execute()
+                
+                print(f"✅ Added manual goal: {goal_data['participant_name']} - {goal_data['goal_text'][:50]}...")
+                return True
+            else:
+                print(f"❌ Failed to add manual goal")
+                return False
+                
+        except Exception as e:
+            print(f"Error adding manual goal: {e}")
+            return False
+
     def send_pending_follow_ups(self):
         """Send scheduled follow-up messages (simple version - just logs for now)"""
         try:
