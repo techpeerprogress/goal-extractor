@@ -322,50 +322,90 @@ def show_quantifiable_goals_tab(supabase: Client):
     if source_filter != "All":
         filtered_goals = [g for g in filtered_goals if g.get('source_type') == source_filter]
     
-    # Display goals
-    st.subheader(f"📋 Goals ({len(filtered_goals)} found)")
+    # Group goals by participant and session
+    st.subheader(f"📋 Goals by Member & Session ({len(filtered_goals)} total goals)")
+    
+    # Group goals by participant_name and call_date
+    grouped_goals = {}
     for goal in filtered_goals:
+        participant = goal.get('participant_name', 'Unknown')
         call_date = goal.get('call_date', 'N/A')
-        participant_name = goal.get('participant_name', 'Unknown')
-        goal_text = goal.get('goal_text', 'No goal')
-        source_type = goal.get('source_type', 'ai_extraction')
+        group_name = goal.get('group_name', 'N/A')
         
-        # Source badge
-        source_badge = "🤖 AI" if source_type == 'ai_extraction' else "👤 Manual" if source_type == 'human_input' else f"📝 {source_type}"
+        key = f"{participant}|{call_date}|{group_name}"
+        if key not in grouped_goals:
+            grouped_goals[key] = {
+                'participant': participant,
+                'call_date': call_date,
+                'group_name': group_name,
+                'goals': []
+            }
+        grouped_goals[key]['goals'].append(goal)
+    
+    # Display grouped goals
+    for key, session_data in grouped_goals.items():
+        participant = session_data['participant']
+        call_date = session_data['call_date']
+        group_name = session_data['group_name']
+        goals = session_data['goals']
         
-        with st.expander(f"{source_badge} {participant_name} - {goal_text[:50]}... ({call_date})"):
-            col1, col2 = st.columns([2, 1])
+        # Count AI vs Manual goals for this session
+        ai_count = len([g for g in goals if g.get('source_type') == 'ai_extraction'])
+        manual_count = len([g for g in goals if g.get('source_type') == 'human_input'])
+        
+        # Create expander title with goal count
+        title = f"👤 {participant} - {group_name} ({call_date}) - {len(goals)} goals"
+        if ai_count > 0 and manual_count > 0:
+            title += f" [🤖{ai_count} AI, 👤{manual_count} Manual]"
+        elif ai_count > 0:
+            title += f" [🤖{ai_count} AI]"
+        elif manual_count > 0:
+            title += f" [👤{manual_count} Manual]"
+        
+        with st.expander(title):
+            st.write(f"**Session:** {group_name} on {call_date}")
+            st.write(f"**Total Goals:** {len(goals)}")
             
-            with col1:
-                st.write(f"**Goal:** {goal_text}")
-                st.write(f"**Target:** {goal.get('target_number', 'N/A')}")
-                st.write(f"**Call Date:** {call_date}")
-                st.write(f"**Group:** {goal.get('group_name', 'N/A')}")
-                st.write(f"**Created:** {goal.get('created_at', 'N/A')}")
+            # Display each goal in this session
+            for i, goal in enumerate(goals, 1):
+                goal_text = goal.get('goal_text', 'No goal')
+                source_type = goal.get('source_type', 'ai_extraction')
+                target_number = goal.get('target_number', 'N/A')
                 
-            with col2:
-                st.write(f"**Source:** {source_type}")
-                st.write(f"**Updated By:** {goal.get('updated_by', 'N/A')}")
+                # Source badge
+                source_badge = "🤖 AI" if source_type == 'ai_extraction' else "👤 Manual" if source_type == 'human_input' else f"📝 {source_type}"
+                
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    st.write(f"**Goal {i}:** {goal_text}")
+                    st.write(f"**Target:** {target_number}")
+                    
+                with col2:
+                    st.write(f"**Source:** {source_badge}")
+                    
+                    # Progress tracking
+                    progress = st.slider(f"Progress {i} (%)", 0, 100, 0, key=f"progress_{goal['id']}")
+                    if st.button(f"Update {i}", key=f"update_{goal['id']}"):
+                        st.info(f"Progress update for goal {i} would be implemented here")
                 
                 # Show source details if available
                 source_details = goal.get('source_details', {})
                 if source_details:
-                    st.write("**Source Details:**")
-                    if source_type == 'ai_extraction':
-                        confidence = source_details.get('confidence_score', 'N/A')
-                        st.write(f"- Confidence: {confidence}")
-                        st.write(f"- Method: AI Transcript Analysis")
-                    elif source_type == 'human_input':
-                        input_method = source_details.get('input_method', 'N/A')
-                        st.write(f"- Method: {input_method}")
-                        notes = source_details.get('notes', '')
-                        if notes:
-                            st.write(f"- Notes: {notes}")
+                    with st.expander(f"Details for Goal {i}", expanded=False):
+                        if source_type == 'ai_extraction':
+                            confidence = source_details.get('confidence_score', 'N/A')
+                            st.write(f"- Confidence: {confidence}")
+                            st.write(f"- Method: AI Transcript Analysis")
+                        elif source_type == 'human_input':
+                            input_method = source_details.get('input_method', 'N/A')
+                            st.write(f"- Method: {input_method}")
+                            notes = source_details.get('notes', '')
+                            if notes:
+                                st.write(f"- Notes: {notes}")
                 
-                # Progress tracking (placeholder - would need actual progress data)
-                progress = st.slider("Progress (%)", 0, 100, 0, key=f"progress_{goal['id']}")
-                if st.button("Update Progress", key=f"update_{goal['id']}"):
-                    st.info("Progress update functionality would be implemented here")
+                if i < len(goals):  # Add separator between goals
+                    st.divider()
 
 def show_community_posting_tab(supabase: Client):
     """Display community posting activity"""
