@@ -88,20 +88,42 @@ Extracted Commitments:
 """
 
 EXTRACT_QUANTIFIABLE_GOALS = """
-Find ANY commitments, plans, or goals mentioned by participants.
+Task: Extract ONLY quantifiable business/professional goals from mastermind call transcript
 
-Look for: explicit commitments, conversational commitments, time-based goals, action items.
+Input: Transcript of a mastermind call with multiple participants
 
+Process:
+For each participant, identify ONLY goals that meet these criteria:
+1. **Business/Professional Focus**: Related to business growth, client acquisition, revenue, marketing, etc.
+2. **Quantifiable**: Has specific numbers, deadlines, or measurable outcomes
+3. **Actionable**: Something they will DO, not just discuss or consider
+4. **Future-Oriented**: A commitment for next week/month, not past accomplishments
+
+EXCLUDE:
+- Personal life circumstances (childcare, travel, family issues)
+- General discussions or updates
+- Past accomplishments or current status
+- Vague statements without specific numbers/deadlines
+- Attendance or scheduling information
+
+Output format:
 ### [Participant Name]
-**Goals with Numbers:**
-[Goal 1: "Complete goal text here"]
-[Goal 2: "Another goal text"]
-[If none: "No specific commitments mentioned"]
+**Quantifiable Goals:**
+[Goal 1: "Specific goal with numbers/deadlines"]
+[Goal 2: "Another specific goal with measurable outcome"]
+[If none: "No quantifiable goals mentioned"]
 ---
 
 CRITICAL: Each goal MUST be on its own line starting with [Goal X: and ending with ]
 
-Rules: Include ANY commitment, use exact words, be very inclusive.
+Constraints:
+- ONLY extract business/professional goals
+- MUST have specific numbers, deadlines, or measurable outcomes
+- EXCLUDE personal life circumstances and attendance information
+- EXCLUDE vague statements without clear metrics
+- Be selective: when in doubt, exclude it
+
+Verify: Each goal has specific numbers/deadlines and is business-focused
 
 Transcript:
 {transcript}
