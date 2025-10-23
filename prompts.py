@@ -1,40 +1,28 @@
 EXTRACT_COMMITMENTS = """
-Task: Extract goal commitments from a mastermind call transcript
+# Extract Commitments from Mastermind Call
 
-Input: Transcript of a mastermind call with multiple participants
+**Task:** Find what each participant commits to doing next week.
 
-Process:
-For each participant who speaks, identify:
-1. Their full name
-2. Summary of what they discussed (max 100 words)
-3. Their exact commitment for next week (direct quote)
-4. Timestamp of the commitment (if available)
-
-Output format:
+**Output Format:**
 ### [Participant Name]
-
-**What They Discussed:**
-[Summary in 2-3 sentences, max 100 words]
-
-**Their Commitment for Next Week:**
-[Exact quote OR "No specific commitment made"]
-
-**Exact Quote:**
-"[Direct quote from transcript]" OR "N/A"
-
-**Timestamp:**
-[Time in transcript] OR "N/A"
-
+**What They Discussed:** [2-3 sentences]
+**Commitment:** [Exact quote OR "No specific commitment made"]
+**Quote:** "[Direct quote]" OR "N/A"
+**Timestamp:** [Time] OR "N/A"
 ---
 
-Constraints:
-- Only extract explicit commitments (not implied or suggested)
-- Use exact quotes from the transcript
-- If no commitment is made, state "No specific commitment made"
-- Include all participants who speak
-- Separate each participant with "---"
+**Rules:**
+- Only explicit commitments (not implied)
+- Use exact quotes
+- Include all speakers
+- If no commitment, state clearly
 
-Verify: Each participant has all 4 fields filled
+**Example:**
+### Sarah Johnson
+**What They Discussed:** Sarah shared struggles with lead generation and inconsistent outreach.
+**Commitment:** "I will make 5 sales calls this week"
+**Quote:** "I will make 5 sales calls this week"
+**Timestamp:** (15m 30s)
 
 Transcript:
 {transcript}
@@ -42,189 +30,182 @@ Transcript:
 
 
 CLASSIFY_COMMITMENTS = """
-Task: Classify goal commitments by quantifiability
+# Classify Commitments by Quantifiability
 
-Input: List of participant commitments extracted from a transcript
+**Task:** Determine if each commitment is measurable or needs clarification.
 
-Classification Rules:
-- **Quantifiable**: Has a specific number OR verifiable completion point OR clear deadline
-- **Not Quantifiable**: Vague goal without measurable criteria
-- **No Goal**: No commitment was made
-- **Decision Pending**: Waiting on external factors
-
-Process:
-For each participant commitment, add:
-1. Classification (one of the 4 types above)
-2. Reason for classification (one sentence)
-3. How to make it quantifiable (only if "Not Quantifiable")
-
-Output format:
+**Output Format:**
 ### [Participant Name]
-
-[Keep original "What They Discussed" and "Commitment" sections]
-
-**Classification:**
-[Quantifiable/Not Quantifiable/No Goal/Decision Pending]
-
-**Why This Classification:**
-[One clear sentence explaining the classification]
-
-**How to Make It Quantifiable:**
-[Specific suggestion with numbers/deadlines] OR "N/A"
-
+[Keep original sections]
+**Classification:** [Quantifiable/Not Quantifiable/No Goal/Decision Pending]
+**Why:** [One sentence explanation]
+**Suggestion:** [How to make quantifiable] OR "N/A"
 ---
 
-Constraints:
-- Only one classification per person
-- "Quantifiable" must have measurable criteria
-- Suggestions must include specific numbers or deadlines
-- Keep original content intact
-- Be strict: when in doubt, classify as "Not Quantifiable"
+**Rules:**
+- **Quantifiable**: Has specific numbers, deadlines, or completion points
+- **Not Quantifiable**: Vague without measurable criteria
+- **No Goal**: No commitment made
+- **Decision Pending**: Waiting on external factors
+- Be strict: when in doubt, "Not Quantifiable"
 
-Verify: Each participant has classification and reason
+**Example:**
+### Sarah Johnson
+[Original content preserved]
+**Classification:** Quantifiable
+**Why:** Contains specific number "5" and clear action "sales calls"
+**Suggestion:** N/A
 
 Extracted Commitments:
 {commitments}
 """
 
 EXTRACT_QUANTIFIABLE_GOALS = """
-Task: Extract ONLY quantifiable business/professional goals from mastermind call transcript
+# Extract Quantifiable Goals
 
-Input: Transcript of a mastermind call with multiple participants
+**Task:** Find goals with specific numbers or measurable outcomes.
 
-Process:
-For each participant, identify ONLY goals that meet these criteria:
-1. **Business/Professional Focus**: Related to business growth, client acquisition, revenue, marketing, etc.
-2. **Quantifiable**: Has specific numbers, deadlines, or measurable outcomes
-3. **Actionable**: Something they will DO, not just discuss or consider
-4. **Future-Oriented**: A commitment for next week/month, not past accomplishments
-
-EXCLUDE:
-- Personal life circumstances (childcare, travel, family issues)
-- General discussions or updates
-- Past accomplishments or current status
-- Vague statements without specific numbers/deadlines
-- Attendance or scheduling information
-
-Output format:
+**Output Format:**
 ### [Participant Name]
-**Quantifiable Goals:**
-[Goal 1: "Specific goal with numbers/deadlines"]
-[Goal 2: "Another specific goal with measurable outcome"]
-[If none: "No quantifiable goals mentioned"]
+**Goals with Numbers:**
+[Goal 1: "I will make 5 sales calls this week"]
+[Goal 2: "Post 3 times on LinkedIn"]
+[If none: "No specific numbers mentioned"]
 ---
-
-CRITICAL: Each goal MUST be on its own line starting with [Goal X: and ending with ]
-
-Constraints:
-- ONLY extract business/professional goals
-- MUST have specific numbers, deadlines, or measurable outcomes
-- EXCLUDE personal life circumstances and attendance information
-- EXCLUDE vague statements without clear metrics
-- Be selective: when in doubt, exclude it
-
-Verify: Each goal has specific numbers/deadlines and is business-focused
 
 Transcript:
 {transcript}
 """
 
 MARKETING_ACTIVITY_EXTRACTION = """
-Find marketing activities by participant and classify them.
+# Extract Marketing Activities
 
-Categories: Network Activation, LinkedIn, Cold Outreach
+**Task:** Find marketing activities by participant and classify them.
 
+**Categories:**
+- **Network Activation**: Outreach to existing relationships/referrals
+- **LinkedIn**: New relationships or engagement on LinkedIn
+- **Cold Outreach**: Contacting strangers outside LinkedIn
+
+**Output Format:**
 Name: [Participant Name]
 - Network Activation: [activity, qty if mentioned]
 - LinkedIn: [activity, qty if mentioned]
 - Cold Outreach: [activity, qty if mentioned]
+
+**Example:**
+Name: Juliana
+- Network Activation: DM'd 5 past clients on LinkedIn
+- LinkedIn: Posted twice to increase visibility
 
 Transcript:
 {transcript}
 """
 
 PIPELINE_OUTCOME_EXTRACTION = """
-Find business outcomes (meetings, proposals, clients) by participant.
+# Extract Pipeline Outcomes
 
+**Task:** Find business outcomes (meetings, proposals, clients) by participant.
+
+**Output Format:**
 Name: [Participant Name]
 Meetings: [#]
 Proposals: [#]
 Clients: [#]
 Notes: [brief context]
 
+**Example:**
+Name: Chris
+Meetings: 3
+Proposals: 1
+Clients: 0
+Notes: Three discovery calls, one proposal sent
+
+---
+
 Transcript:
 {transcript}
 """
 
 CHALLENGE_STRATEGY_EXTRACTION = """
-Find participant challenges and strategies shared during the call.
+# Extract Challenges & Strategies
 
+**Task:** Find participant challenges and strategies shared during the call.
+
+**Output Format:**
 Name: [Participant Name]
 Challenge: [Core challenge in 1-2 sentences]
 Category: [Challenge category]
 Strategies/Tips:
 - [Who shared it: summary + strategy type]
 
-Challenge Categories: Clarity, Lead Generation, Sales & Conversion, Systems & Operations, Time & Focus, Team & Delegation, Mindset/Emotional, Scaling & Offers, Other
+**Challenge Categories:**
+- Clarity - Unclear goals/positioning
+- Lead Generation - Not enough leads
+- Sales & Conversion - Trouble converting
+- Systems & Operations - Process issues
+- Time & Focus - Overwhelm/priorities
+- Team & Delegation - Hiring/management
+- Mindset/Emotional - Fear/perfectionism
+- Scaling & Offers - Growth bottlenecks
+- Other - Doesn't fit above
 
-Strategy Types: Mindset Reframe, Tactical Process, Tool/Resource, Connection/Referral, Framework/Model
+**Strategy Types:**
+- Mindset Reframe - Perspective shift
+- Tactical Process - Step-by-step method
+- Tool/Resource - Specific tool/template
+- Connection/Referral - Intro/networking
+- Framework/Model - Structure/methodology
+
+**Example:**
+Name: Juliana
+Challenge: Unclear how to structure recurring CFO services offer
+Category: Scaling & Offers
+Strategies/Tips:
+- Tanya: Create simple recurring retainer anchored on one outcome (Tactical Process)
+- Kevin: Talk to 3 current clients to identify monthly service (Tactical Process)
 
 Transcript:
 {transcript}
 """
 
 GENERATE_NUDGES = """
-Task: Create personalized accountability nudge messages
+# Generate Accountability Nudges
 
-Input: Classified goal commitments from a mastermind call
+**Task:** Create personalized messages for participants without quantifiable goals.
 
-Process:
-For each participant with "Not Quantifiable" or "No Goal" classification:
-1. Acknowledge something positive from their discussion
-2. Point out the missing quantifiable goal
-3. Suggest 3 specific alternative goals with numbers/deadlines
-4. Ask if they want accountability
-
-Output format:
+**Output Format:**
 ### [Participant Name]
-
-[Keep all previous sections]
-
-**Personalized Accountability Nudge Message:**
-
-> @[Name] [Acknowledgment of their work/discussion]
+[Keep previous sections]
+**Nudge Message:**
+> @[Name] [Acknowledge their work]
 > 
-> I noticed you didn't set a **quantifiable goal** during the call. [Empathetic context]
+> I noticed you didn't set a **quantifiable goal** during the call.
 > 
-> Here are a few options you could lock in:
+> Here are a few options:
+> • [Emoji] [Goal with number/deadline]
+> • [Emoji] [Goal with number/deadline]
+> • [Emoji] [Goal with number/deadline]
 > 
-> • [Emoji] [Specific goal with number/deadline]
-> 
-> • [Emoji] [Specific goal with number/deadline]
-> 
-> • [Emoji] [Specific goal with number/deadline]
-> 
-> Do you want me to hold you accountable to one of these for next week's check-in?
+> Want me to hold you accountable to one of these?
 
----
-
-Constraints:
-- Only create messages for "Not Quantifiable" or "No Goal"
-- For "Quantifiable" goals, set field to "N/A"
-- Max 150 words per message
-- Friendly, encouraging tone
-- Each suggestion must have specific numbers or deadlines
-- Use relevant emojis (✍️, 📞, 🧭, 📝, etc.)
-
-Verify: Messages only for non-quantifiable goals, "N/A" for quantifiable goals
+**Rules:**
+- Only for "Not Quantifiable" or "No Goal"
+- "N/A" for quantifiable goals
+- Max 150 words
+- Friendly tone
+- Specific numbers/deadlines
 
 Classified Commitments:
 {classified_commitments}
 """
 
 STUCK_SIGNAL_EXTRACTION = """
-Find when participants express being stuck, stalled, or not making progress.
+# Extract Stuck Signals
 
+**Task:** Find when participants express being stuck, stalled, or not making progress.
+
+**Output Format:**
 ### [PARTICIPANT NAME]
 **Stuck Summary:** [What kind of stuckness and why]
 **Exact Quotes:** [1-3 revealing quotes]
@@ -232,15 +213,34 @@ Find when participants express being stuck, stalled, or not making progress.
 **Classification:** [Momentum Drop/Emotional Block/Overwhelm/Decision Paralysis/Repeating Goal/Other]
 **Suggested Nudge:** [Light-touch suggestion]
 
-Classifications: Momentum Drop, Emotional Block, Overwhelm, Decision Paralysis, Repeating Goal, Other
+**Classifications:**
+- **Momentum Drop:** Lost rhythm/progress temporarily
+- **Emotional Block:** Frustration, fear, perfectionism loops
+- **Overwhelm:** Too many things, unclear priorities
+- **Decision Paralysis:** Unsure which path to take
+- **Repeating Goal:** Same goal multiple weeks without movement
+- **Other:** Doesn't fit above
+
+**Example:**
+### Mack Earnhardt
+**Stuck Summary:** Felt completely stuck for two weeks, can't get off "Square Zero"
+**Exact Quotes:** 
+- "I have felt completely stuck for the last two weeks"
+- "I just can't seem to get… off of Square Zero"
+**Timestamp:** (48m 45s–49m 44s)
+**Classification:** Momentum Drop + Emotional Block
+**Suggested Nudge:** Book momentum reset session, break into 1-2 micro-goals
 
 Transcript:
 {transcript}
 """
 
 HELP_OFFER_EXTRACTION = """
-Find when participants offer to help, support, or provide expertise to others.
+# Extract Help Offers
 
+**Task:** Find when participants offer to help, support, or provide expertise to others.
+
+**Output Format:**
 ### [PARTICIPANT NAME]
 **What They Offered:** [Type of help offered]
 **Context:** [Why this help is relevant]
@@ -248,15 +248,31 @@ Find when participants offer to help, support, or provide expertise to others.
 **Timestamp:** (XXm XXs)
 **Classification:** [Expertise/Resource/General Support/Introductions/Review & Feedback]
 
-Classifications: Expertise, Resource, General Support, Introductions, Review & Feedback
+**Classifications:**
+- **Expertise:** Knowledge/skill in specific domain
+- **Resource:** Document, tool, or contact sharing
+- **General Support:** Open-ended help
+- **Introductions:** Connecting people
+- **Review & Feedback:** Looking over materials
+
+**Example:**
+### Jon Benedict
+**What They Offered:** Expertise in healthcare, especially HIPAA privacy compliance
+**Context:** Jon works with hospitals and has deep HIPAA experience
+**Exact Quote:** "If there's anything I can do to support anybody, especially healthcare client or HIPAA privacy question, just reach out"
+**Timestamp:** (45m 32s)
+**Classification:** Expertise
 
 Transcript:
 {transcript}
 """
 
 SENTIMENT_ANALYSIS = """
-Analyze emotional tone to detect morale shifts and group health.
+# Analyze Call Sentiment & Group Health
 
+**Task:** Analyze emotional tone to detect morale shifts and group health.
+
+**Output Format:**
 **Sentiment Score:** [1-5]
 **Rationale:** [1-2 sentences explaining score]
 **Dominant Emotions:** [2-4 emotional tags]
@@ -264,7 +280,23 @@ Analyze emotional tone to detect morale shifts and group health.
 **Confidence Score:** [0-1]
 **Negative Participants:** [List with emotions and evidence]
 
-Scoring: 5=High Positive, 4=Positive, 3=Neutral/Mixed, 2=Negative, 1=Very Negative
+**Scoring:**
+- **5 – High Positive:** Multiple wins, excitement, laughter, celebration
+- **4 – Positive:** General optimism, some wins, supportive energy
+- **3 – Neutral/Mixed:** Balanced tone, some excitement, some frustrations
+- **2 – Negative:** Several stuck/low energy, few wins, venting
+- **1 – Very Negative:** Predominantly stuck, frustrated, demoralized
+
+**Example:**
+**Sentiment Score:** 4 (Positive)
+**Rationale:** Generally upbeat tone with wins shared and supportive responses
+**Dominant Emotions:** supportive, optimistic, frustrated, stuck
+**Representative Quotes:** 
+- Mark Alcazar: "I'm meeting with him tomorrow, like, holy shit, wow—great!"
+- Mack Earnhardt: "I have felt completely stuck for the last two weeks."
+**Confidence Score:** 0.82
+**Negative Participants:**
+- Mack Earnhardt: stuck, low energy - "I have felt completely stuck for the last two weeks"
 
 Transcript:
 {transcript}
