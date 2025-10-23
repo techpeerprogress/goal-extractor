@@ -71,70 +71,62 @@ class TranscriptProcessor:
             print(f"Error initializing Google Drive: {e}")
             return None
     
-    def get_october_transcripts(self, folder_url: str = None) -> List[Dict]:
+    def get_all_transcript_files(self, folder_url: str = None, days_back: int = 30) -> List[Dict]:
+        """Get all transcript files from any folder, regardless of structure"""
         try:
             folder_id = self._extract_folder_id(folder_url or os.getenv('GOOGLE_DRIVE_FOLDER_URL'))
             if not folder_id:
                 raise Exception("Could not extract folder ID from URL")
             
-            october_folder_query = f"'{folder_id}' in parents and name='OCTOBER 2025 TRANSCRIPTS' and mimeType='application/vnd.google-apps.folder'"
-            october_results = self.drive_service.files().list(
-                q=october_folder_query,
-                fields="files(id, name)"
-            ).execute()
-            
-            october_folders = october_results.get('files', [])
-            if not october_folders:
-                print("October 2025 folder not found")
-                return []
-            
-            october_folder_id = october_folders[0]['id']
-            print(f"Found October folder: {october_folder_id}")
-            
-            subfolder_query = f"'{october_folder_id}' in parents and mimeType='application/vnd.google-apps.folder'"
-            subfolder_results = self.drive_service.files().list(
-                q=subfolder_query,
-                fields="files(id, name)"
-            ).execute()
-            
-            subfolders = subfolder_results.get('files', [])
-            print(f"Found {len(subfolders)} October subfolders")
-            
-            all_files = []
+            # Search for all transcript files directly
             file_types = [
                 'application/vnd.google-apps.document',
                 'application/pdf', 
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
             ]
             
-            for subfolder in subfolders:
-                subfolder_id = subfolder['id']
-                subfolder_name = subfolder['name']
-                print(f"Searching {subfolder_name}...")
-                
-                for mime_type in file_types:
-                    try:
-                        query = f"'{subfolder_id}' in parents and mimeType='{mime_type}'"
-                        results = self.drive_service.files().list(
-                            q=query,
-                            fields="files(id, name, mimeType, createdTime, modifiedTime)",
-                            orderBy="name"
-                        ).execute()
-                        
-                        files = results.get('files', [])
-                        if files:
-                            print(f"  Found {len(files)} {mime_type.split('/')[-1]} files")
-                            all_files.extend(files)
-                    except Exception as e:
-                        print(f"  Error searching for {mime_type}: {e}")
-                        continue
+            all_files = []
+            cutoff_date = datetime.now() - timedelta(days=days_back)
             
-            print(f"Total found {len(all_files)} October transcript files")
+            for mime_type in file_types:
+                try:
+                    # Search for files modified in the last N days
+                    query = f"'{folder_id}' in parents and mimeType='{mime_type}' and modifiedTime > '{cutoff_date.isoformat()}Z'"
+                    results = self.drive_service.files().list(
+                        q=query,
+                        fields="files(id, name, mimeType, createdTime, modifiedTime)",
+                        orderBy="modifiedTime desc"
+                    ).execute()
+                    
+                    files = results.get('files', [])
+                    if files:
+                        print(f"Found {len(files)} recent {mime_type.split('/')[-1]} files")
+                        all_files.extend(files)
+                        
+                        # Show file names for debugging
+                        for file in files[:5]:  # Show first 5 files
+                            print(f"  - {file['name']} (modified: {file.get('modifiedTime', 'unknown')})")
+                        if len(files) > 5:
+                            print(f"  ... and {len(files) - 5} more files")
+                            
+                except Exception as e:
+                    print(f"Error searching for {mime_type}: {e}")
+                    continue
+            
+            print(f"Total found {len(all_files)} recent transcript files")
             return all_files
             
         except Exception as e:
-            print(f"Error getting October transcripts: {e}")
+            print(f"Error getting all transcript files: {e}")
             return []
+    
+    def get_recent_transcripts(self, folder_url: str = None, days_back: int = 7) -> List[Dict]:
+        """Get recent transcripts from the last N days"""
+        return self.get_all_transcript_files(folder_url, days_back)
+    
+    def get_october_transcripts(self, folder_url: str = None) -> List[Dict]:
+        """Legacy method - use get_recent_transcripts instead"""
+        return self.get_recent_transcripts(folder_url, days_back=30)
     
     def _extract_folder_id(self, folder_url: str) -> str:
         if not folder_url:
@@ -284,10 +276,10 @@ class TranscriptProcessor:
             print(f"Error extracting group info from {filename}: {e}")
             return {'group_name': 'Unknown Group', 'session_date': '2024-10-15'}
     
-    def process_all_october_transcripts(self, folder_url: str = None) -> Dict:
-        """Process all October transcripts found in the Google Drive folder"""
+    def process_recent_transcripts(self, folder_url: str = None, days_back: int = 7) -> Dict:
+        """Process recent transcripts from the last N days"""
         try:
-            transcripts = self.get_october_transcripts(folder_url)
+            transcripts = self.get_recent_transcripts(folder_url, days_back)
             results = {
                 'processed': 0,
                 'failed': 0,
@@ -3249,17 +3241,12 @@ def main():
     # Initialize the processor
     processor = TranscriptProcessor(organization_id='f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e')
     
-    # Process all October transcripts
-    results = processor.process_all_october_transcripts()
+    # Process yesterday's transcripts from the specific folder
+    print("🔍 Fetching all transcripts...")
+    results = processor.process_recent_transcripts(folder_url=os.getenv('GOOGLE_DRIVE_FOLDER_URL'))
     
     print(f"\nProcessing Complete:")
-    print(f"Successfully processed: {results['processed']}")
-    print(f"Failed: {results['failed']}")
-    
-    if results['details']:
-        print("\nDetails:")
-        for detail in results['details']:
-            print(f"  - {detail['filename']}: {detail['status']}")
+    print(f"Successfully processed: {len(results)}")
 
 if __name__ == "__main__":
     main()
