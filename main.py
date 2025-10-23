@@ -1004,14 +1004,16 @@ class TranscriptProcessor:
         """Create a summary post for the community"""
         total_participants = len(set([g['participant_name'] for g in quantifiable_goals + vague_goals]))
         
-        post_content = f"""🎯 **{group_name} - Goals Summary ({session_date})**
+        post_content = f"""
+        🎯 **{group_name} - Goals Summary ({session_date})**
 
-👥 **{total_participants} participants** shared their goals
+        👥 **{total_participants} participants** shared their goals
 
-✅ **{len(quantifiable_goals)} quantifiable goals** set
-📝 **{len(vague_goals)} goals** need more specificity
+        ✅ **{len(quantifiable_goals)} quantifiable goals** set
+        📝 **{len(vague_goals)} goals** need more specificity
 
-Let's hold each other accountable! 💪"""
+        Let's hold each other accountable! 💪
+        """
         
         return {
             'type': 'summary',
@@ -3242,11 +3244,18 @@ def main():
     processor = TranscriptProcessor(organization_id='f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e')
     
     # Process yesterday's transcripts from the specific folder
-    print("🔍 Fetching all transcripts...")
-    results = processor.process_recent_transcripts(folder_url=os.getenv('GOOGLE_DRIVE_FOLDER_URL'))
+    print("🔍 Looking for yesterday's transcripts...")
+    yesterday_folder_url = "https://drive.google.com/drive/folders/1ku7IhbFWsYWDnYf0FJMcqOn2EIOfPnWu"
+    results = processor.process_recent_transcripts(folder_url=yesterday_folder_url, days_back=7)
     
     print(f"\nProcessing Complete:")
-    print(f"Successfully processed: {len(results)}")
+    print(f"Successfully processed: {results['processed']}")
+    print(f"Failed: {results['failed']}")
+    
+    if results['details']:
+        print("\nDetails:")
+        for detail in results['details']:
+            print(f"  - {detail['filename']}: {detail['status']}")
 
 if __name__ == "__main__":
     main()
