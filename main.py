@@ -735,6 +735,14 @@ class TranscriptProcessor:
             member = self.get_member_by_name(commitment['participant_name'])
             member_id = member['id'] if member else None
             
+            # Convert target_number to float if it exists
+            target_number = commitment.get('target_number')
+            if target_number is not None:
+                try:
+                    target_number = float(target_number)
+                except (ValueError, TypeError):
+                    target_number = None
+            
             commitment_data = {
                 'transcript_session_id': transcript_session_id,
                 'member_id': member_id,
@@ -748,7 +756,7 @@ class TranscriptProcessor:
                 'classification_reason': commitment.get('classification_reason'),
                 'quantification_suggestion': commitment.get('quantification_suggestion'),
                 'nudge_message': commitment.get('nudge_message'),
-                'target_number': commitment.get('target_number'),
+                'target_number': target_number,
                 'goal_unit': commitment.get('goal_unit'),
                 'week_start_date': commitment.get('call_date'),
                 'deadline_date': (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
@@ -787,6 +795,14 @@ class TranscriptProcessor:
                 if existing_goal.data:
                     continue
                 
+                # Convert target_number to float if it exists
+                target_number = goal.get('target_number')
+                if target_number is not None:
+                    try:
+                        target_number = float(target_number)
+                    except (ValueError, TypeError):
+                        target_number = 1.0  # Default fallback
+                
                 goal_record = {
                        'transcript_session_id': transcript_session_id,
                        'member_id': member_id,
@@ -795,7 +811,7 @@ class TranscriptProcessor:
                        'group_name': goal_data['group_name'],
                        'call_date': goal_data['call_date'],
                        'goal_text': goal.get('goal_text'),
-                       'target_number': goal.get('target_number')
+                       'target_number': target_number
                 }
                    
                 # Add source tracking columns if they exist
