@@ -240,17 +240,18 @@ class TranscriptProcessor:
                     group_name = f"Group {match.group(1)}"
                     break
             
-            # Extract date from filename
+            # Extract date from filename (including folder context)
             date_patterns = [
                 r'(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD
                 r'(\d{2}-\d{2}-\d{4})',  # MM-DD-YYYY
                 r'(\d{8})',              # YYYYMMDD
                 r'(\d{1,2})[_-](\d{1,2})[_-](\d{4})',  # M_D_YYYY or M-D-YYYY
+                r'(October|Nov|Dec|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep)\s+(\d{1,2}),?\s+(\d{4})',  # "October 22, 2025"
             ]
             
             session_date = None
             for pattern in date_patterns:
-                match = re.search(pattern, filename)
+                match = re.search(pattern, filename, re.IGNORECASE)
                 if match:
                     if len(match.groups()) == 1:
                         date_str = match.group(1)
@@ -259,8 +260,23 @@ class TranscriptProcessor:
                         else:
                             session_date = date_str
                     elif len(match.groups()) == 3:
-                        month, day, year = match.groups()
-                        session_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                        if pattern == r'(October|Nov|Dec|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep)\s+(\d{1,2}),?\s+(\d{4})':
+                            # Handle month name format: "October 22, 2025"
+                            month_name, day, year = match.groups()
+                            month_map = {
+                                'january': '01', 'jan': '01', 'february': '02', 'feb': '02',
+                                'march': '03', 'mar': '03', 'april': '04', 'apr': '04',
+                                'may': '05', 'june': '06', 'jun': '06', 'july': '07', 'jul': '07',
+                                'august': '08', 'aug': '08', 'september': '09', 'sep': '09',
+                                'october': '10', 'oct': '10', 'november': '11', 'nov': '11',
+                                'december': '12', 'dec': '12'
+                            }
+                            month_num = month_map.get(month_name.lower(), '10')
+                            session_date = f"{year}-{month_num}-{day.zfill(2)}"
+                        else:
+                            # Handle numeric format: M_D_YYYY
+                            month, day, year = match.groups()
+                            session_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
                     break
             
             # If no date found, use current date
