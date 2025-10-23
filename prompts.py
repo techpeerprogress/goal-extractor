@@ -1,14 +1,40 @@
 EXTRACT_COMMITMENTS = """
-Find what each participant commits to doing next week.
+Task: Extract goal commitments from a mastermind call transcript
 
+Input: Transcript of a mastermind call with multiple participants
+
+Process:
+For each participant who speaks, identify:
+1. Their full name
+2. Summary of what they discussed (max 100 words)
+3. Their exact commitment for next week (direct quote)
+4. Timestamp of the commitment (if available)
+
+Output format:
 ### [Participant Name]
-**What They Discussed:** [2-3 sentences]
-**Commitment:** [Exact quote OR "No specific commitment made"]
-**Quote:** "[Direct quote]" OR "N/A"
-**Timestamp:** [Time] OR "N/A"
+
+**What They Discussed:**
+[Summary in 2-3 sentences, max 100 words]
+
+**Their Commitment for Next Week:**
+[Exact quote OR "No specific commitment made"]
+
+**Exact Quote:**
+"[Direct quote from transcript]" OR "N/A"
+
+**Timestamp:**
+[Time in transcript] OR "N/A"
+
 ---
 
-Rules: Only explicit commitments, use exact quotes, include all speakers.
+Constraints:
+- Only extract explicit commitments (not implied or suggested)
+- Use exact quotes from the transcript
+- If no commitment is made, state "No specific commitment made"
+- Include all participants who speak
+- Separate each participant with "---"
+
+Verify: Each participant has all 4 fields filled
 
 Transcript:
 {transcript}
@@ -16,16 +42,46 @@ Transcript:
 
 
 CLASSIFY_COMMITMENTS = """
-Determine if each commitment is measurable or needs clarification.
+Task: Classify goal commitments by quantifiability
 
+Input: List of participant commitments extracted from a transcript
+
+Classification Rules:
+- **Quantifiable**: Has a specific number OR verifiable completion point OR clear deadline
+- **Not Quantifiable**: Vague goal without measurable criteria
+- **No Goal**: No commitment was made
+- **Decision Pending**: Waiting on external factors
+
+Process:
+For each participant commitment, add:
+1. Classification (one of the 4 types above)
+2. Reason for classification (one sentence)
+3. How to make it quantifiable (only if "Not Quantifiable")
+
+Output format:
 ### [Participant Name]
-[Keep original sections]
-**Classification:** [Quantifiable/Not Quantifiable/No Goal/Decision Pending]
-**Why:** [One sentence explanation]
-**Suggestion:** [How to make quantifiable] OR "N/A"
+
+[Keep original "What They Discussed" and "Commitment" sections]
+
+**Classification:**
+[Quantifiable/Not Quantifiable/No Goal/Decision Pending]
+
+**Why This Classification:**
+[One clear sentence explaining the classification]
+
+**How to Make It Quantifiable:**
+[Specific suggestion with numbers/deadlines] OR "N/A"
+
 ---
 
-Rules: Quantifiable = specific numbers/deadlines, be strict when in doubt.
+Constraints:
+- Only one classification per person
+- "Quantifiable" must have measurable criteria
+- Suggestions must include specific numbers or deadlines
+- Keep original content intact
+- Be strict: when in doubt, classify as "Not Quantifiable"
+
+Verify: Each participant has classification and reason
 
 Extracted Commitments:
 {commitments}
@@ -96,23 +152,49 @@ Transcript:
 """
 
 GENERATE_NUDGES = """
-Create personalized messages for participants without quantifiable goals.
+Task: Create personalized accountability nudge messages
 
+Input: Classified goal commitments from a mastermind call
+
+Process:
+For each participant with "Not Quantifiable" or "No Goal" classification:
+1. Acknowledge something positive from their discussion
+2. Point out the missing quantifiable goal
+3. Suggest 3 specific alternative goals with numbers/deadlines
+4. Ask if they want accountability
+
+Output format:
 ### [Participant Name]
-[Keep previous sections]
-**Nudge Message:**
-> @[Name] [Acknowledge their work]
-> 
-> I noticed you didn't set a **quantifiable goal** during the call.
-> 
-> Here are a few options:
-> • [Emoji] [Goal with number/deadline]
-> • [Emoji] [Goal with number/deadline]
-> • [Emoji] [Goal with number/deadline]
-> 
-> Want me to hold you accountable to one of these?
 
-Rules: Only for "Not Quantifiable" or "No Goal", max 150 words, friendly tone.
+[Keep all previous sections]
+
+**Personalized Accountability Nudge Message:**
+
+> @[Name] [Acknowledgment of their work/discussion]
+> 
+> I noticed you didn't set a **quantifiable goal** during the call. [Empathetic context]
+> 
+> Here are a few options you could lock in:
+> 
+> • [Emoji] [Specific goal with number/deadline]
+> 
+> • [Emoji] [Specific goal with number/deadline]
+> 
+> • [Emoji] [Specific goal with number/deadline]
+> 
+> Do you want me to hold you accountable to one of these for next week's check-in?
+
+---
+
+Constraints:
+- Only create messages for "Not Quantifiable" or "No Goal"
+- For "Quantifiable" goals, set field to "N/A"
+- Max 150 words per message
+- Friendly, encouraging tone
+- Each suggestion must have specific numbers or deadlines
+- Use relevant emojis (✍️, 📞, 🧭, 📝, etc.)
+
+Verify: Messages only for non-quantifiable goals, "N/A" for quantifiable goals
 
 Classified Commitments:
 {classified_commitments}
