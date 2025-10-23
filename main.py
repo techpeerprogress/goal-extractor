@@ -263,9 +263,9 @@ class TranscriptProcessor:
                         session_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
                     break
             
-            # If no date found, assume October 2025
+            # If no date found, use current date
             if not session_date:
-                session_date = "2025-10-22"  # Current date default
+                session_date = datetime.now().strftime('%Y-%m-%d')
             
             return {
                 'group_name': group_name,
