@@ -226,19 +226,45 @@ class TranscriptProcessor:
     def extract_group_info_from_filename(self, filename: str) -> Dict:
         """Extract group name and date from filename"""
         try:
-            # Common patterns in transcript filenames
+            # Enhanced patterns for transcript filenames
             patterns = [
                 r'Group\s*(\d+\.\d+)[^.]*\.',  # Group 1.1, Group 1.2, etc.
                 r'(\d+\.\d+)[^.]*\.',          # 1.1, 1.2, etc.
                 r'Group\s*([^.]*)\.',          # Group name before extension
+                r'Main\s*Room\s*(\d+)',        # Main Room 1, Main Room 2
+                r'Room\s*(\d+)',               # Room 1, Room 2
+                r'(\w+)\s*(\d+\.\d+)',        # Any word followed by number.number
             ]
             
-            group_name = "Unknown Group"
+            group_name = "Main Session"  # Better default than "Unknown Group"
+            
             for pattern in patterns:
                 match = re.search(pattern, filename, re.IGNORECASE)
                 if match:
-                    group_name = f"Group {match.group(1)}"
+                    if 'Main Room' in filename or 'Main Room' in pattern:
+                        group_name = f"Main Room {match.group(1)}"
+                    elif 'Room' in filename and 'Main' not in filename:
+                        group_name = f"Room {match.group(1)}"
+                    elif len(match.groups()) >= 2:
+                        # Handle patterns with multiple groups
+                        group_name = f"Group {match.group(2)}"
+                    else:
+                        group_name = f"Group {match.group(1)}"
                     break
+            
+            # If still no match, try to extract any meaningful identifier
+            if group_name == "Main Session":
+                # Look for any number pattern
+                number_match = re.search(r'(\d+)', filename)
+                if number_match:
+                    group_name = f"Session {number_match.group(1)}"
+                else:
+                    # Extract first meaningful word
+                    word_match = re.search(r'([A-Za-z]+)', filename)
+                    if word_match:
+                        group_name = f"{word_match.group(1).title()} Session"
+            
+            print(f"📝 Extracted group name: '{group_name}' from filename: '{filename}'")
             
             # Extract date from filename (including folder context)
             date_patterns = [
@@ -2811,6 +2837,8 @@ class TranscriptProcessor:
     def analyze_sentiment(self, transcript: str, transcript_session_id: str, group_name: str, session_date: str) -> Dict:
         """Analyze sentiment and group health from transcript using AI"""
         try:
+            print(f"🔍 Analyzing sentiment for group: '{group_name}', session_id: '{transcript_session_id}'")
+            
             # Load the sentiment analysis prompt
             prompt = self.SENTIMENT_ANALYSIS.format(transcript=transcript)
             
