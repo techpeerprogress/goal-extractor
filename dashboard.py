@@ -221,11 +221,11 @@ def show_vague_goals_tab(supabase: Client):
     # Filter options
     col1, col2, col3 = st.columns(3)
     with col1:
-        participant_filter = st.selectbox("Filter by Participant", ["All"] + list(set([g.get('participant_name', '') for g in vague_goals])))
+        participant_filter = st.selectbox("Filter by Participant", ["All"] + list(set([g.get('participant_name', '') for g in vague_goals])), key="vague_participant_filter")
     with col2:
-        source_filter = st.selectbox("Filter by Source", ["All"] + list(set([g.get('source_type', '') for g in vague_goals])))
+        source_filter = st.selectbox("Filter by Source", ["All"] + list(set([g.get('source_type', '') for g in vague_goals])), key="vague_source_filter")
     with col3:
-        group_filter = st.selectbox("Filter by Group", ["All"] + list(set([g.get('group_name', '') for g in vague_goals])))
+        group_filter = st.selectbox("Filter by Group", ["All"] + list(set([g.get('group_name', '') for g in vague_goals])), key="vague_group_filter")
     
     # Apply filters
     filtered_goals = vague_goals
@@ -387,9 +387,9 @@ def show_quantifiable_goals_tab(supabase: Client):
     st.subheader("🔍 Additional Filters")
     col1, col2, col3 = st.columns(3)
     with col1:
-        participant_filter = st.selectbox("Filter by Participant", ["All"] + list(set([g.get('participant_name', '') for g in goals])))
+        participant_filter = st.selectbox("Filter by Participant", ["All"] + list(set([g.get('participant_name', '') for g in goals])), key="quantifiable_participant_filter")
     with col2:
-        source_filter = st.selectbox("Filter by Source", ["All"] + list(set([g.get('source_type', '') for g in goals])))
+        source_filter = st.selectbox("Filter by Source", ["All"] + list(set([g.get('source_type', '') for g in goals])), key="quantifiable_source_filter")
     with col3:
         if st.button("➕ Add Manual Goal"):
             st.session_state.show_manual_goal_form = True
@@ -637,9 +637,9 @@ def show_member_changes_tab(supabase: Client):
     # Filter options
     col1, col2 = st.columns(2)
     with col1:
-        change_type_filter = st.selectbox("Filter by Change Type", ["All"] + change_types)
+        change_type_filter = st.selectbox("Filter by Change Type", ["All"] + change_types, key="member_change_type_filter")
     with col2:
-        member_filter = st.selectbox("Filter by Member", ["All"] + list(set([c.get('member_name', '') for c in changes])))
+        member_filter = st.selectbox("Filter by Member", ["All"] + list(set([c.get('member_name', '') for c in changes])), key="member_change_member_filter")
     
     # Apply filters
     filtered_changes = changes
