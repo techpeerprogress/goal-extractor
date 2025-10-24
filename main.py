@@ -570,10 +570,13 @@ class TranscriptProcessor:
         return ' '.join(content)
     
     def _parse_quantifiable_goals(self, ai_response: str, group_name: str, call_date: str) -> List[Dict]:
-        """Parse AI response for quantifiable goals - simplified version"""
+        """Parse AI response for both quantifiable and non-quantifiable goals"""
         goals = []
         current_participant = None
-        current_goals = []
+        current_quantifiable_goals = []
+        current_non_quantifiable_goals = []
+        in_quantifiable_section = False
+        in_non_quantifiable_section = False
         
         lines = ai_response.split('\n')
         
@@ -582,21 +585,33 @@ class TranscriptProcessor:
             
             # New participant section
             if line.startswith('### '):
-                if current_participant and current_goals:
+                if current_participant and (current_quantifiable_goals or current_non_quantifiable_goals):
                     goals.append({
                         'participant_name': current_participant,
                         'group_name': group_name,
                         'call_date': call_date or datetime.now().strftime('%Y-%m-%d'),
                         'organization_id': self.organization_id,
-                        'quantifiable_goals': current_goals
+                        'quantifiable_goals': current_quantifiable_goals,
+                        'non_quantifiable_goals': current_non_quantifiable_goals
                     })
                 
                 current_participant = line.replace('### ', '').strip()
-                current_goals = []
+                current_quantifiable_goals = []
+                current_non_quantifiable_goals = []
+                in_quantifiable_section = False
+                in_non_quantifiable_section = False
             
-            # Extract goal text with numbers
+            # Check for section headers
+            elif line.startswith('**Quantifiable Goals:**'):
+                in_quantifiable_section = True
+                in_non_quantifiable_section = False
+            elif line.startswith('**Non-Quantifiable Goals:**'):
+                in_quantifiable_section = False
+                in_non_quantifiable_section = True
+            
+            # Extract goal text
             elif line.startswith('[Goal') and ']' in line:
-                # Find the last closing bracket (which closes the entire [Goal X: "..."] structure)
+                # Find the last closing bracket
                 bracket_idx = line.rfind(']')
                 
                 if bracket_idx != -1:
@@ -611,29 +626,37 @@ class TranscriptProcessor:
                         if goal_text.startswith('"') and goal_text.endswith('"'):
                             goal_text = goal_text[1:-1].strip()
                         
-                        if goal_text and goal_text not in ["No specific numbers mentioned", "No specific commitments mentioned"] and not goal_text.startswith("[If none:") and goal_text != "No specific commitments mentioned":
+                        # Skip placeholder text
+                        if goal_text and goal_text not in ["No specific numbers mentioned", "No specific commitments mentioned", "No quantifiable goals mentioned", "No non-quantifiable goals mentioned"] and not goal_text.startswith("[If none:"):
+                            
                             # Extract number from goal text if available
                             number_match = re.search(r'(\d+(?:\.\d+)?)', goal_text)
                             if number_match:
                                 target_number = float(number_match.group(1))
                             else:
-                                # Default to 1 for goals without specific numbers
                                 target_number = 1.0
                             
                             goal_data = {
                                 'goal_text': goal_text,
-                                'target_number': target_number
+                                'target_number': target_number,
+                                'goal_unit': 'units'  # Default unit
                             }
-                            current_goals.append(goal_data)
+                            
+                            # Add to appropriate section
+                            if in_quantifiable_section:
+                                current_quantifiable_goals.append(goal_data)
+                            elif in_non_quantifiable_section:
+                                current_non_quantifiable_goals.append(goal_data)
         
-        # Add the last participant if exists
-        if current_participant and current_goals:
+        # Handle the last participant
+        if current_participant and (current_quantifiable_goals or current_non_quantifiable_goals):
             goals.append({
                 'participant_name': current_participant,
                 'group_name': group_name,
                 'call_date': call_date or datetime.now().strftime('%Y-%m-%d'),
                 'organization_id': self.organization_id,
-                'quantifiable_goals': current_goals
+                'quantifiable_goals': current_quantifiable_goals,
+                'non_quantifiable_goals': current_non_quantifiable_goals
             })
         
         return goals
@@ -735,7 +758,6 @@ class TranscriptProcessor:
             member = self.get_member_by_name(commitment['participant_name'])
             member_id = member['id'] if member else None
             
-            # Convert target_number to float if it exists
             target_number = commitment.get('target_number')
             if target_number is not None:
                 try:
@@ -782,11 +804,12 @@ class TranscriptProcessor:
             return False
     
     def store_quantifiable_goals(self, goal_data: Dict, transcript_session_id: str):
-        """Store quantifiable goals for a participant with AI source tracking"""
+        """Store both quantifiable and non-quantifiable goals for a participant"""
         try:
             member = self.get_member_by_name(goal_data['participant_name'])
             member_id = member['id'] if member else None
             
+            # Store quantifiable goals
             for goal in goal_data.get('quantifiable_goals', []):
                 existing_goal = self.supabase.schema('peer_progress').table('quantifiable_goals').select('id').eq(
                     'participant_name', goal_data['participant_name']
@@ -843,6 +866,62 @@ class TranscriptProcessor:
                             'initial_setup': True,
                             'transcript_session_id': transcript_session_id
                         }
+                    }
+                    self.supabase.schema('peer_progress').table('goal_progress_tracking').insert(progress_data).execute()
+            
+            # Store non-quantifiable goals
+            for goal in goal_data.get('non_quantifiable_goals', []):
+                existing_goal = self.supabase.schema('peer_progress').table('quantifiable_goals').select('id').eq(
+                    'participant_name', goal_data['participant_name']
+                ).eq('goal_text', goal.get('goal_text')).eq('call_date', goal_data['call_date']).execute()
+                
+                if existing_goal.data:
+                    continue
+                
+                # Convert target_number to float if it exists
+                target_number = goal.get('target_number')
+                if target_number is not None:
+                    try:
+                        target_number = float(target_number)
+                    except (ValueError, TypeError):
+                        target_number = 1.0  # Default fallback
+                
+                goal_record = {
+                       'transcript_session_id': transcript_session_id,
+                       'member_id': member_id,
+                       'organization_id': self.organization_id,
+                       'participant_name': goal_data['participant_name'],
+                       'group_name': goal_data['group_name'],
+                       'call_date': goal_data['call_date'],
+                       'goal_text': goal.get('goal_text'),
+                       'target_number': target_number
+                }
+                   
+                # Add source tracking columns if they exist
+                try:
+                    goal_record.update({
+                        'source_type': 'ai_extraction',
+                        'source_details': {
+                            'extraction_method': 'ai_transcript_analysis',
+                            'transcript_session_id': transcript_session_id,
+                            'confidence_score': goal.get('confidence_score', 0.8),
+                            'goal_type': 'non_quantifiable'
+                        },
+                        'updated_by': 'ai_system'
+                    })
+                except:
+                    pass  # Columns don't exist yet, skip source tracking
+                
+                result = self.supabase.schema('peer_progress').table('quantifiable_goals').insert(goal_record).execute()
+                
+                if result.data:
+                    progress_data = {
+                        'goal_id': result.data[0]['id'],
+                        'member_id': member_id,
+                        'organization_id': self.organization_id,
+                        'progress_percentage': 0,
+                        'notes': 'Non-quantifiable goal - needs clarification',
+                        'updated_by': 'ai_system'
                     }
                     self.supabase.schema('peer_progress').table('goal_progress_tracking').insert(progress_data).execute()
             

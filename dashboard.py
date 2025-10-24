@@ -1,12 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import os
 from supabase import create_client, Client
-from typing import List, Dict, Optional
-import json
 
 # Page configuration
 st.set_page_config(
@@ -246,16 +243,20 @@ def show_quantifiable_goals_tab(supabase: Client):
         st.info("📝 No quantifiable goals found for the selected date range.")
         return
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("Total Goals", len(goals))
     with col2:
+        quantifiable_goals = len([g for g in goals if g.get('source_details', {}).get('goal_type', 'quantifiable') == 'quantifiable'])
+        st.metric("✅ Quantifiable", quantifiable_goals)
+    with col3:
+        non_quantifiable_goals = len([g for g in goals if g.get('source_details', {}).get('goal_type', 'quantifiable') == 'non_quantifiable'])
+        st.metric("⚠️ Not Quantifiable", non_quantifiable_goals)
+    with col4:
         ai_goals = len([g for g in goals if g.get('source_type') == 'ai_extraction'])
         manual_goals = len([g for g in goals if g.get('source_type') == 'human_input'])
-        st.metric("AI Goals", ai_goals)
-    with col3:
-        st.metric("Manual Goals", manual_goals)
-    with col4:
+        st.metric("🤖 AI Goals", ai_goals)
+    with col5:
         unique_participants = len(set([g.get('participant_name', '') for g in goals]))
         st.metric("Active Participants", unique_participants)
     
@@ -372,22 +373,34 @@ def show_quantifiable_goals_tab(supabase: Client):
                 source_type = goal.get('source_type', 'ai_extraction')
                 target_number = goal.get('target_number', 'N/A')
                 
+                # Check if this is a non-quantifiable goal
+                source_details = goal.get('source_details', {})
+                goal_type = source_details.get('goal_type', 'quantifiable')
+                is_non_quantifiable = goal_type == 'non_quantifiable'
+                
                 # Source badge
                 source_badge = "🤖 AI" if source_type == 'ai_extraction' else "👤 Manual" if source_type == 'human_input' else f"📝 {source_type}"
+                
+                # Goal type badge
+                type_badge = "⚠️ Not Quantifiable" if is_non_quantifiable else "✅ Quantifiable"
                 
                 col1, col2 = st.columns([3, 1])
                 
                 with col1:
                     st.write(f"**Goal {i}:** {goal_text}")
                     st.write(f"**Target:** {target_number}")
+                    st.write(f"**Type:** {type_badge}")
                     
                 with col2:
                     st.write(f"**Source:** {source_badge}")
                     
-                    # Progress tracking
-                    progress = st.slider(f"Progress {i} (%)", 0, 100, 0, key=f"progress_{goal['id']}")
-                    if st.button(f"Update {i}", key=f"update_{goal['id']}"):
-                        st.info(f"Progress update for goal {i} would be implemented here")
+                    # Progress tracking (only for quantifiable goals)
+                    if not is_non_quantifiable:
+                        progress = st.slider(f"Progress {i} (%)", 0, 100, 0, key=f"progress_{goal['id']}")
+                        if st.button(f"Update {i}", key=f"update_{goal['id']}"):
+                            st.info(f"Progress update for goal {i} would be implemented here")
+                    else:
+                        st.info("⚠️ Non-quantifiable goal - needs clarification")
                 
                 # Show source details if available
                 source_details = goal.get('source_details', {})

@@ -61,17 +61,28 @@ Extracted Commitments:
 """
 
 EXTRACT_QUANTIFIABLE_GOALS = """
-# Extract Quantifiable Goals
+# Extract Goals (Quantifiable and Non-Quantifiable)
 
-**Task:** Find goals with specific numbers or measurable outcomes.
+**Task:** Find ALL goals/commitments, then classify them as quantifiable or not.
 
 **Output Format:**
 ### [Participant Name]
-**Goals with Numbers:**
+**Quantifiable Goals:**
 [Goal 1: "I will make 5 sales calls this week"]
 [Goal 2: "Post 3 times on LinkedIn"]
-[If none: "No specific numbers mentioned"]
+[If none: "No quantifiable goals mentioned"]
+
+**Non-Quantifiable Goals:**
+[Goal 1: "I plan to do outreach"]
+[Goal 2: "I want to network more"]
+[If none: "No non-quantifiable goals mentioned"]
 ---
+
+**Rules:**
+- **Quantifiable**: Has specific numbers, deadlines, or measurable outcomes
+- **Non-Quantifiable**: Vague goals without specific metrics
+- **EXCLUDE**: Attendance info, scheduling, personal life circumstances
+- Include ALL goals mentioned, but classify them properly
 
 Transcript:
 {transcript}
