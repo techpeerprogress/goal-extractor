@@ -350,12 +350,24 @@ def show_quantifiable_goals_tab(supabase: Client):
         group_name = session_data['group_name']
         goals = session_data['goals']
         
-        # Count AI vs Manual goals for this session
+        # Count goals by type and source
+        quantifiable_count = len([g for g in goals if g.get('source_details', {}).get('goal_type', 'quantifiable') == 'quantifiable'])
+        non_quantifiable_count = len([g for g in goals if g.get('source_details', {}).get('goal_type', 'quantifiable') == 'non_quantifiable'])
         ai_count = len([g for g in goals if g.get('source_type') == 'ai_extraction'])
         manual_count = len([g for g in goals if g.get('source_type') == 'human_input'])
         
-        # Create expander title with goal count
+        # Create expander title with goal count and type breakdown
         title = f"👤 {participant} - {group_name} ({call_date}) - {len(goals)} goals"
+        
+        # Add type breakdown
+        if quantifiable_count > 0 and non_quantifiable_count > 0:
+            title += f" [✅{quantifiable_count} Quantifiable, ⚠️{non_quantifiable_count} Not Quantifiable]"
+        elif quantifiable_count > 0:
+            title += f" [✅{quantifiable_count} Quantifiable]"
+        elif non_quantifiable_count > 0:
+            title += f" [⚠️{non_quantifiable_count} Not Quantifiable]"
+        
+        # Add source breakdown
         if ai_count > 0 and manual_count > 0:
             title += f" [🤖{ai_count} AI, 👤{manual_count} Manual]"
         elif ai_count > 0:
@@ -365,7 +377,17 @@ def show_quantifiable_goals_tab(supabase: Client):
         
         with st.expander(title):
             st.write(f"**Session:** {group_name} on {call_date}")
-            st.write(f"**Total Goals:** {len(goals)}")
+            
+            # Summary section
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Goals", len(goals))
+            with col2:
+                st.metric("✅ Quantifiable", quantifiable_count)
+            with col3:
+                st.metric("⚠️ Not Quantifiable", non_quantifiable_count)
+            
+            st.divider()
             
             # Display each goal in this session
             for i, goal in enumerate(goals, 1):

@@ -811,11 +811,15 @@ class TranscriptProcessor:
             
             # Store quantifiable goals
             for goal in goal_data.get('quantifiable_goals', []):
+                # Enhanced deduplication check
                 existing_goal = self.supabase.schema('peer_progress').table('quantifiable_goals').select('id').eq(
                     'participant_name', goal_data['participant_name']
-                ).eq('goal_text', goal.get('goal_text')).eq('call_date', goal_data['call_date']).execute()
+                ).eq('goal_text', goal.get('goal_text')).eq('call_date', goal_data['call_date']).eq(
+                    'group_name', goal_data['group_name']
+                ).execute()
                 
                 if existing_goal.data:
+                    print(f"⚠️ Skipping duplicate quantifiable goal for {goal_data['participant_name']}: {goal.get('goal_text', '')[:50]}...")
                     continue
                 
                 # Convert target_number to float if it exists
@@ -871,11 +875,15 @@ class TranscriptProcessor:
             
             # Store non-quantifiable goals
             for goal in goal_data.get('non_quantifiable_goals', []):
+                # Enhanced deduplication check
                 existing_goal = self.supabase.schema('peer_progress').table('quantifiable_goals').select('id').eq(
                     'participant_name', goal_data['participant_name']
-                ).eq('goal_text', goal.get('goal_text')).eq('call_date', goal_data['call_date']).execute()
+                ).eq('goal_text', goal.get('goal_text')).eq('call_date', goal_data['call_date']).eq(
+                    'group_name', goal_data['group_name']
+                ).execute()
                 
                 if existing_goal.data:
+                    print(f"⚠️ Skipping duplicate non-quantifiable goal for {goal_data['participant_name']}: {goal.get('goal_text', '')[:50]}...")
                     continue
                 
                 # Convert target_number to float if it exists
