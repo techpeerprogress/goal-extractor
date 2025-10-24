@@ -58,7 +58,7 @@ def fetch_vague_goals(supabase: Client, organization_id: str = None):
         return []
 
 def fetch_quantifiable_goals(supabase: Client, organization_id: str = None, start_date: str = None, end_date: str = None):
-    """Fetch quantifiable goals with optional date filtering"""
+    """Fetch only quantifiable goals with optional date filtering"""
     try:
         query = supabase.schema('peer_progress').table('quantifiable_goals').select('*')
         
@@ -70,9 +70,47 @@ def fetch_quantifiable_goals(supabase: Client, organization_id: str = None, star
             query = query.lte('call_date', end_date)
         
         result = query.order('call_date', desc=True).execute()
-        return result.data if result.data else []
+        all_goals = result.data if result.data else []
+        
+        # Filter to only show quantifiable goals
+        quantifiable_goals = []
+        for goal in all_goals:
+            source_details = goal.get('source_details', {})
+            goal_type = source_details.get('goal_type', 'quantifiable')
+            if goal_type == 'quantifiable':
+                quantifiable_goals.append(goal)
+        
+        return quantifiable_goals
     except Exception as e:
         st.error(f"Error fetching quantifiable goals: {e}")
+        return []
+
+def fetch_non_quantifiable_goals(supabase: Client, organization_id: str = None, start_date: str = None, end_date: str = None):
+    """Fetch only non-quantifiable goals with optional date filtering"""
+    try:
+        query = supabase.schema('peer_progress').table('quantifiable_goals').select('*')
+        
+        if organization_id:
+            query = query.eq('organization_id', organization_id)
+        if start_date:
+            query = query.gte('call_date', start_date)
+        if end_date:
+            query = query.lte('call_date', end_date)
+        
+        result = query.order('call_date', desc=True).execute()
+        all_goals = result.data if result.data else []
+        
+        # Filter to only show non-quantifiable goals
+        non_quantifiable_goals = []
+        for goal in all_goals:
+            source_details = goal.get('source_details', {})
+            goal_type = source_details.get('goal_type', 'quantifiable')
+            if goal_type == 'non_quantifiable':
+                non_quantifiable_goals.append(goal)
+        
+        return non_quantifiable_goals
+    except Exception as e:
+        st.error(f"Error fetching non-quantifiable goals: {e}")
         return []
 
 def fetch_community_posts(supabase: Client, organization_id: str = None):
@@ -157,67 +195,140 @@ def fetch_goal_source_analytics(supabase: Client, organization_id: str = None):
 
 # Tab functions
 def show_vague_goals_tab(supabase: Client):
-    """Display vague goals that need QA clarification"""
-    st.header("🚨 Vague Goals - QA Queue")
+    """Display non-quantifiable goals that need clarification"""
+    st.header("🚨 Vague Goals - Non-Quantifiable Goals")
     
-    vague_goals = fetch_vague_goals(supabase)
+    st.subheader("📅 Date Filter")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        start_date = st.date_input("Start Date", value=None, key="vague_start_date")
+    with col2:
+        end_date = st.date_input("End Date", value=None, key="vague_end_date")
+    with col3:
+        if st.button("Clear Date Filter", key="vague_clear"):
+            st.rerun()
+    
+    start_date_str = start_date.strftime('%Y-%m-%d') if start_date else None
+    end_date_str = end_date.strftime('%Y-%m-%d') if end_date else None
+    
+    vague_goals = fetch_non_quantifiable_goals(supabase, start_date=start_date_str, end_date=end_date_str)
     
     if not vague_goals:
-        st.info("✅ No vague goals detected. All goals are quantifiable!")
+        st.info("✅ No non-quantifiable goals found. All goals are quantifiable!")
         return
     
     # Filter options
     col1, col2, col3 = st.columns(3)
     with col1:
-        status_filter = st.selectbox("Filter by Status", ["All", "pending_followup", "clarified", "resolved"])
-    with col2:
         participant_filter = st.selectbox("Filter by Participant", ["All"] + list(set([g.get('participant_name', '') for g in vague_goals])))
+    with col2:
+        source_filter = st.selectbox("Filter by Source", ["All"] + list(set([g.get('source_type', '') for g in vague_goals])))
     with col3:
-        date_filter = st.date_input("Filter by Date", value=None)
+        group_filter = st.selectbox("Filter by Group", ["All"] + list(set([g.get('group_name', '') for g in vague_goals])))
     
     # Apply filters
     filtered_goals = vague_goals
-    if status_filter != "All":
-        filtered_goals = [g for g in filtered_goals if g.get('status') == status_filter]
     if participant_filter != "All":
         filtered_goals = [g for g in filtered_goals if g.get('participant_name') == participant_filter]
+    if source_filter != "All":
+        filtered_goals = [g for g in filtered_goals if g.get('source_type') == source_filter]
+    if group_filter != "All":
+        filtered_goals = [g for g in filtered_goals if g.get('group_name') == group_filter]
     
-    st.metric("Total Vague Goals", len(filtered_goals))
-    st.metric("Pending QA Review", len([g for g in filtered_goals if g.get('status') == 'pending_followup']))
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Non-Quantifiable Goals", len(filtered_goals))
+    with col2:
+        ai_goals = len([g for g in filtered_goals if g.get('source_type') == 'ai_extraction'])
+        st.metric("🤖 AI Extracted", ai_goals)
+    with col3:
+        manual_goals = len([g for g in filtered_goals if g.get('source_type') == 'human_input'])
+        st.metric("👤 Manual Input", manual_goals)
     
-    # Display goals
+    # Group goals by participant and session (same format as quantifiable goals)
+    st.subheader(f"📋 Non-Quantifiable Goals by Member & Session ({len(filtered_goals)} total goals)")
+    
+    # Group goals by participant_name and call_date
+    grouped_goals = {}
     for goal in filtered_goals:
-        with st.expander(f"🎯 {goal.get('participant_name', 'Unknown')} - {goal.get('original_goal_text', 'No goal')[:50]}..."):
-            col1, col2 = st.columns([2, 1])
+        participant = goal.get('participant_name', 'Unknown')
+        call_date = goal.get('call_date', 'N/A')
+        group_name = goal.get('group_name', 'N/A')
+        
+        key = f"{participant}|{call_date}|{group_name}"
+        if key not in grouped_goals:
+            grouped_goals[key] = {
+                'participant': participant,
+                'call_date': call_date,
+                'group_name': group_name,
+                'goals': []
+            }
+        grouped_goals[key]['goals'].append(goal)
+    
+    # Display grouped goals
+    for key, session_data in grouped_goals.items():
+        participant = session_data['participant']
+        call_date = session_data['call_date']
+        group_name = session_data['group_name']
+        goals = session_data['goals']
+        
+        # Count AI vs Manual goals for this session
+        ai_count = len([g for g in goals if g.get('source_type') == 'ai_extraction'])
+        manual_count = len([g for g in goals if g.get('source_type') == 'human_input'])
+        
+        # Create expander title with goal count
+        title = f"👤 {participant} - {group_name} ({call_date}) - {len(goals)} non-quantifiable goals"
+        if ai_count > 0 and manual_count > 0:
+            title += f" [🤖{ai_count} AI, 👤{manual_count} Manual]"
+        elif ai_count > 0:
+            title += f" [🤖{ai_count} AI]"
+        elif manual_count > 0:
+            title += f" [👤{manual_count} Manual]"
+        
+        with st.expander(title):
+            st.write(f"**Session:** {group_name} on {call_date}")
+            st.write(f"**Total Non-Quantifiable Goals:** {len(goals)}")
+            st.write("⚠️ **These goals need clarification to become quantifiable**")
+            st.divider()
             
-            with col1:
-                st.write(f"**Original Goal:** {goal.get('original_goal_text', 'N/A')}")
-                st.write(f"**Status:** {goal.get('status', 'N/A')}")
-                st.write(f"**Created:** {goal.get('created_at', 'N/A')}")
+            # Display each goal in this session
+            for i, goal in enumerate(goals, 1):
+                goal_text = goal.get('goal_text', 'No goal')
+                source_type = goal.get('source_type', 'ai_extraction')
+                target_number = goal.get('target_number', 'N/A')
                 
-                vagueness_reasons = goal.get('vagueness_reasons', {})
-                if vagueness_reasons:
-                    st.write("**Vagueness Reasons:**")
-                    for reason in vagueness_reasons:
-                        st.write(f"- {reason}")
-            
-            with col2:
-                st.write(f"**Source:** {goal.get('source_type', 'N/A')}")
-                st.write(f"**Updated By:** {goal.get('updated_by', 'N/A')}")
+                # Source badge
+                source_badge = "🤖 AI" if source_type == 'ai_extraction' else "👤 Manual" if source_type == 'human_input' else f"📝 {source_type}"
                 
-                if goal.get('status') == 'pending_followup':
-                    if st.button(f"Mark as Clarified", key=f"clarify_{goal['id']}"):
-                        # Update status to clarified
-                        try:
-                            supabase.schema('peer_progress').table('vague_goals_detected').update({
-                                'status': 'clarified',
-                                'updated_by': 'dashboard_user',
-                                'updated_at': 'now()'
-                            }).eq('id', goal['id']).execute()
-                            st.success("✅ Goal marked as clarified!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error updating goal: {e}")
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    st.write(f"**Goal {i}:** {goal_text}")
+                    st.write(f"**Target:** {target_number}")
+                    st.write("**Type:** ⚠️ Not Quantifiable")
+                    
+                with col2:
+                    st.write(f"**Source:** {source_badge}")
+                    st.info("⚠️ Needs clarification")
+                
+                # Show source details if available
+                source_details = goal.get('source_details', {})
+                if source_details:
+                    with st.expander(f"Details for Goal {i}", expanded=False):
+                        if source_type == 'ai_extraction':
+                            confidence = source_details.get('confidence_score', 'N/A')
+                            st.write(f"- Confidence: {confidence}")
+                            st.write(f"- Method: AI Transcript Analysis")
+                        elif source_type == 'human_input':
+                            input_method = source_details.get('input_method', 'N/A')
+                            st.write(f"- Method: {input_method}")
+                            notes = source_details.get('notes', '')
+                            if notes:
+                                st.write(f"- Notes: {notes}")
+                
+                if i < len(goals):  # Add separator between goals
+                    st.divider()
 
 def show_quantifiable_goals_tab(supabase: Client):
     """Display quantifiable goals and progress tracking"""
@@ -243,20 +354,16 @@ def show_quantifiable_goals_tab(supabase: Client):
         st.info("📝 No quantifiable goals found for the selected date range.")
         return
     
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Total Goals", len(goals))
+        st.metric("Total Quantifiable Goals", len(goals))
     with col2:
-        quantifiable_goals = len([g for g in goals if g.get('source_details', {}).get('goal_type', 'quantifiable') == 'quantifiable'])
-        st.metric("✅ Quantifiable", quantifiable_goals)
-    with col3:
-        non_quantifiable_goals = len([g for g in goals if g.get('source_details', {}).get('goal_type', 'quantifiable') == 'non_quantifiable'])
-        st.metric("⚠️ Not Quantifiable", non_quantifiable_goals)
-    with col4:
         ai_goals = len([g for g in goals if g.get('source_type') == 'ai_extraction'])
-        manual_goals = len([g for g in goals if g.get('source_type') == 'human_input'])
         st.metric("🤖 AI Goals", ai_goals)
-    with col5:
+    with col3:
+        manual_goals = len([g for g in goals if g.get('source_type') == 'human_input'])
+        st.metric("👤 Manual Goals", manual_goals)
+    with col4:
         unique_participants = len(set([g.get('participant_name', '') for g in goals]))
         st.metric("Active Participants", unique_participants)
     
@@ -350,22 +457,12 @@ def show_quantifiable_goals_tab(supabase: Client):
         group_name = session_data['group_name']
         goals = session_data['goals']
         
-        # Count goals by type and source
-        quantifiable_count = len([g for g in goals if g.get('source_details', {}).get('goal_type', 'quantifiable') == 'quantifiable'])
-        non_quantifiable_count = len([g for g in goals if g.get('source_details', {}).get('goal_type', 'quantifiable') == 'non_quantifiable'])
+        # Count goals by source
         ai_count = len([g for g in goals if g.get('source_type') == 'ai_extraction'])
         manual_count = len([g for g in goals if g.get('source_type') == 'human_input'])
         
-        # Create expander title with goal count and type breakdown
-        title = f"👤 {participant} - {group_name} ({call_date}) - {len(goals)} goals"
-        
-        # Add type breakdown
-        if quantifiable_count > 0 and non_quantifiable_count > 0:
-            title += f" [✅{quantifiable_count} Quantifiable, ⚠️{non_quantifiable_count} Not Quantifiable]"
-        elif quantifiable_count > 0:
-            title += f" [✅{quantifiable_count} Quantifiable]"
-        elif non_quantifiable_count > 0:
-            title += f" [⚠️{non_quantifiable_count} Not Quantifiable]"
+        # Create expander title with goal count and source breakdown
+        title = f"👤 {participant} - {group_name} ({call_date}) - {len(goals)} quantifiable goals"
         
         # Add source breakdown
         if ai_count > 0 and manual_count > 0:
@@ -379,13 +476,11 @@ def show_quantifiable_goals_tab(supabase: Client):
             st.write(f"**Session:** {group_name} on {call_date}")
             
             # Summary section
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             with col1:
-                st.metric("Total Goals", len(goals))
+                st.metric("Total Quantifiable Goals", len(goals))
             with col2:
-                st.metric("✅ Quantifiable", quantifiable_count)
-            with col3:
-                st.metric("⚠️ Not Quantifiable", non_quantifiable_count)
+                st.metric("✅ All Quantifiable", len(goals))
             
             st.divider()
             
@@ -395,34 +490,23 @@ def show_quantifiable_goals_tab(supabase: Client):
                 source_type = goal.get('source_type', 'ai_extraction')
                 target_number = goal.get('target_number', 'N/A')
                 
-                # Check if this is a non-quantifiable goal
-                source_details = goal.get('source_details', {})
-                goal_type = source_details.get('goal_type', 'quantifiable')
-                is_non_quantifiable = goal_type == 'non_quantifiable'
-                
                 # Source badge
                 source_badge = "🤖 AI" if source_type == 'ai_extraction' else "👤 Manual" if source_type == 'human_input' else f"📝 {source_type}"
-                
-                # Goal type badge
-                type_badge = "⚠️ Not Quantifiable" if is_non_quantifiable else "✅ Quantifiable"
                 
                 col1, col2 = st.columns([3, 1])
                 
                 with col1:
                     st.write(f"**Goal {i}:** {goal_text}")
                     st.write(f"**Target:** {target_number}")
-                    st.write(f"**Type:** {type_badge}")
+                    st.write("**Type:** ✅ Quantifiable")
                     
                 with col2:
                     st.write(f"**Source:** {source_badge}")
                     
-                    # Progress tracking (only for quantifiable goals)
-                    if not is_non_quantifiable:
-                        progress = st.slider(f"Progress {i} (%)", 0, 100, 0, key=f"progress_{goal['id']}")
-                        if st.button(f"Update {i}", key=f"update_{goal['id']}"):
-                            st.info(f"Progress update for goal {i} would be implemented here")
-                    else:
-                        st.info("⚠️ Non-quantifiable goal - needs clarification")
+                    # Progress tracking for quantifiable goals
+                    progress = st.slider(f"Progress {i} (%)", 0, 100, 0, key=f"progress_{goal['id']}")
+                    if st.button(f"Update {i}", key=f"update_{goal['id']}"):
+                        st.info(f"Progress update for goal {i} would be implemented here")
                 
                 # Show source details if available
                 source_details = goal.get('source_details', {})
