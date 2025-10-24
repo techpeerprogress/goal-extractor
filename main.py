@@ -320,12 +320,27 @@ class TranscriptProcessor:
                     # Extract group info from filename
                     group_info = self.extract_group_info_from_filename(transcript_file['name'])
                     
+                    # Use Google Drive modification date as session date
+                    modified_time = transcript_file.get('modifiedTime', '')
+                    if modified_time:
+                        try:
+                            # Parse ISO format: 2025-10-22T23:16:31.303Z
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(modified_time.replace('Z', '+00:00'))
+                            session_date = dt.strftime('%Y-%m-%d')
+                            print(f"📅 Using Google Drive modification date: {session_date}")
+                        except Exception as e:
+                            print(f"⚠️ Could not parse modification date {modified_time}: {e}")
+                            session_date = group_info['session_date']
+                    else:
+                        session_date = group_info['session_date']
+                    
                     # Process transcript
                     success = self.process_transcript(
                         transcript_text=content,
                         filename=transcript_file['name'],
                         group_name=group_info['group_name'],
-                        session_date=group_info['session_date']
+                        session_date=session_date
                     )
                     
                     if success:
