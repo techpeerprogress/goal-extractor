@@ -547,6 +547,11 @@ class TranscriptProcessor:
     def extract_commitments_from_transcript(self, transcript_text: str, group_name: str, call_date: str = None) -> List[Dict]:
         """Extract commitments using AI"""
         try:
+            # Skip Main Room transcripts - these are not actual mastermind sessions
+            if group_name and ('Main Room' in group_name or group_name.startswith('Main Room')):
+                print(f"⚠️ Skipping commitment extraction for Main Room session: {group_name}")
+                return []
+            
             prompt = self.EXTRACT_COMMITMENTS.format(transcript=transcript_text)
             response = self.model.generate_content(prompt)
             return self._parse_extracted_commitments(response.text, group_name, call_date)
@@ -557,6 +562,11 @@ class TranscriptProcessor:
     def extract_quantifiable_goals_from_transcript(self, transcript_text: str, group_name: str, call_date: str = None) -> List[Dict]:
         """Extract quantifiable goals using AI"""
         try:
+            # Skip Main Room transcripts - these are not actual mastermind sessions
+            if group_name and ('Main Room' in group_name or group_name.startswith('Main Room')):
+                print(f"⚠️ Skipping goal extraction for Main Room session: {group_name}")
+                return []
+            
             prompt = self.EXTRACT_QUANTIFIABLE_GOALS.format(transcript=transcript_text)
             response = self.model.generate_content(prompt)
             return self._parse_quantifiable_goals(response.text, group_name, call_date)
@@ -851,16 +861,28 @@ class TranscriptProcessor:
             member_id = member['id'] if member else None
             
             # Store quantifiable goals
+            seen_goals = set()  # Track goals already processed in this batch
             for goal in goal_data.get('quantifiable_goals', []):
-                # Enhanced deduplication check
+                goal_text = goal.get('goal_text', '').strip()
+                
+                # Normalize goal text for deduplication (lowercase, remove extra spaces)
+                normalized_text = ' '.join(goal_text.lower().split())
+                
+                # Check for duplicates within this batch
+                if normalized_text in seen_goals:
+                    print(f"⚠️ Skipping duplicate goal in this batch for {goal_data['participant_name']}: {goal_text[:50]}...")
+                    continue
+                seen_goals.add(normalized_text)
+                
+                # Enhanced deduplication check against database (case-insensitive)
                 existing_goal = self.supabase.schema('peer_progress').table('quantifiable_goals').select('id').eq(
                     'participant_name', goal_data['participant_name']
-                ).eq('goal_text', goal.get('goal_text')).eq('call_date', goal_data['call_date']).eq(
+                ).ilike('goal_text', goal_text).eq('call_date', goal_data['call_date']).eq(
                     'group_name', goal_data['group_name']
                 ).execute()
                 
                 if existing_goal.data:
-                    print(f"⚠️ Skipping duplicate quantifiable goal for {goal_data['participant_name']}: {goal.get('goal_text', '')[:50]}...")
+                    print(f"⚠️ Skipping duplicate quantifiable goal for {goal_data['participant_name']}: {goal_text[:50]}...")
                     continue
                 
                 # Convert target_number to float if it exists
@@ -889,7 +911,8 @@ class TranscriptProcessor:
                         'source_details': {
                             'extraction_method': 'ai_transcript_analysis',
                             'transcript_session_id': transcript_session_id,
-                            'confidence_score': goal.get('confidence_score', 0.8)
+                            'confidence_score': goal.get('confidence_score', 0.8),
+                            'goal_type': 'quantifiable'
                         },
                         'updated_by': 'ai_system'
                     })
@@ -915,16 +938,28 @@ class TranscriptProcessor:
                     self.supabase.schema('peer_progress').table('goal_progress_tracking').insert(progress_data).execute()
             
             # Store non-quantifiable goals
+            seen_non_quant_goals = set()  # Track goals already processed in this batch
             for goal in goal_data.get('non_quantifiable_goals', []):
-                # Enhanced deduplication check
+                goal_text = goal.get('goal_text', '').strip()
+                
+                # Normalize goal text for deduplication (lowercase, remove extra spaces)
+                normalized_text = ' '.join(goal_text.lower().split())
+                
+                # Check for duplicates within this batch
+                if normalized_text in seen_non_quant_goals:
+                    print(f"⚠️ Skipping duplicate non-quantifiable goal in this batch for {goal_data['participant_name']}: {goal_text[:50]}...")
+                    continue
+                seen_non_quant_goals.add(normalized_text)
+                
+                # Enhanced deduplication check against database (case-insensitive)
                 existing_goal = self.supabase.schema('peer_progress').table('quantifiable_goals').select('id').eq(
                     'participant_name', goal_data['participant_name']
-                ).eq('goal_text', goal.get('goal_text')).eq('call_date', goal_data['call_date']).eq(
+                ).ilike('goal_text', goal_text).eq('call_date', goal_data['call_date']).eq(
                     'group_name', goal_data['group_name']
                 ).execute()
                 
                 if existing_goal.data:
-                    print(f"⚠️ Skipping duplicate non-quantifiable goal for {goal_data['participant_name']}: {goal.get('goal_text', '')[:50]}...")
+                    print(f"⚠️ Skipping duplicate non-quantifiable goal for {goal_data['participant_name']}: {goal_text[:50]}...")
                     continue
                 
                 # Convert target_number to float if it exists

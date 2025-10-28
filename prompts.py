@@ -63,7 +63,7 @@ Extracted Commitments:
 EXTRACT_QUANTIFIABLE_GOALS = """
 # Extract Goals (Quantifiable and Non-Quantifiable)
 
-**Task:** Find ALL goals/commitments, then classify them as quantifiable or not.
+**Task:** Find ALL goals/commitments that participants commit to, then classify them as quantifiable or not.
 
 **Output Format:**
 ### [Participant Name]
@@ -75,14 +75,35 @@ EXTRACT_QUANTIFIABLE_GOALS = """
 **Non-Quantifiable Goals:**
 [Goal 1: "I plan to do outreach"]
 [Goal 2: "I want to network more"]
+[Goal 3: "Plan to play basketball"]
 [If none: "No non-quantifiable goals mentioned"]
 ---
 
 **Rules:**
-- **Quantifiable**: Has specific numbers, deadlines, or measurable outcomes
-- **Non-Quantifiable**: Vague goals without specific metrics
-- **EXCLUDE**: Attendance info, scheduling, personal life circumstances
-- Include ALL goals mentioned, but classify them properly
+- **Quantifiable**: Has specific numbers, deadlines, or measurable outcomes (e.g., "make 5 calls", "post 3 times", "jog 10km")
+- **Non-Quantifiable**: Vague goals without specific metrics or numbers (e.g., "plan to do outreach", "want to network more", "plan to play basketball", "plan to jog" without distance)
+- **MUST INCLUDE**: All goals that participants commit to, even if not quantifiable - mark them as "Non-Quantifiable Goals"
+- **MUST EXCLUDE**: 
+  - Attendance information (who attended/didn't attend meetings)
+  - Scheduling information (meeting times, availability)
+  - Personal life circumstances not related to commitments
+  - Information that's purely observational or informational
+- When in doubt about whether something is a goal vs. information, ask: "Did the person commit to DOING this?" If yes, include it (as quantifiable or non-quantifiable). If no, exclude it.
+
+**Examples of Non-Quantifiable Goals to INCLUDE:**
+- "I plan to do outreach" ✓
+- "I want to network more" ✓
+- "Plan to play basketball" ✓
+- "Plan to jog 10km" → Quantifiable (has specific distance)
+- "Plan to jog" → Non-quantifiable (no specific distance mentioned)
+
+**Examples to EXCLUDE:**
+- "John attended the meeting" ✗ (attendance info)
+- "The meeting was scheduled for 3pm" ✗ (scheduling info)
+- "Mary mentioned she's traveling next week" ✗ (personal circumstance, not a commitment)
+- Main Room sessions ✗ (if this transcript is from a Main Room, exclude all goals)
+
+**IMPORTANT:** This prompt should NOT be used for "Main Room" transcripts. Main Room sessions are informational and should not have goals extracted.
 
 Transcript:
 {transcript}

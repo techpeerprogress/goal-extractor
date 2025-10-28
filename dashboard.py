@@ -72,9 +72,14 @@ def fetch_quantifiable_goals(supabase: Client, organization_id: str = None, star
         result = query.order('call_date', desc=True).execute()
         all_goals = result.data if result.data else []
         
-        # Filter to only show quantifiable goals
+        # Filter to only show quantifiable goals, excluding Main Room sessions
         quantifiable_goals = []
         for goal in all_goals:
+            # Skip Main Room goals
+            group_name = goal.get('group_name', '')
+            if group_name and ('Main Room' in group_name or group_name.startswith('Main Room')):
+                continue
+            
             source_details = goal.get('source_details', {})
             goal_type = source_details.get('goal_type', 'quantifiable')
             if goal_type == 'quantifiable':
@@ -100,9 +105,14 @@ def fetch_non_quantifiable_goals(supabase: Client, organization_id: str = None, 
         result = query.order('call_date', desc=True).execute()
         all_goals = result.data if result.data else []
         
-        # Filter to only show non-quantifiable goals
+        # Filter to only show non-quantifiable goals, excluding Main Room sessions
         non_quantifiable_goals = []
         for goal in all_goals:
+            # Skip Main Room goals
+            group_name = goal.get('group_name', '')
+            if group_name and ('Main Room' in group_name or group_name.startswith('Main Room')):
+                continue
+            
             source_details = goal.get('source_details', {})
             goal_type = source_details.get('goal_type', 'quantifiable')
             if goal_type == 'non_quantifiable':
