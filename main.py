@@ -4,6 +4,7 @@ import json
 import requests
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import google.generativeai as genai
@@ -435,6 +436,14 @@ class TranscriptProcessor:
     def process_transcript(self, transcript_text: str, filename: str, group_name: str, session_date: str = None) -> bool:
         """Main method to process a transcript and store results"""
         try:
+            # 0. Early exit for Main Room transcripts - skip ALL processing
+            if group_name and ('Main Room' in group_name or group_name.startswith('Main Room')):
+                print(f"⚠️ Skipping Main Room transcript: {group_name} - no processing needed")
+                return False
+            
+            # Initialize member cache for this session
+            member_cache = {}
+            
             # 1. Create transcript session
             session = self.create_transcript_session(filename, group_name, session_date, transcript_text)
             if not session:
@@ -473,13 +482,18 @@ class TranscriptProcessor:
                     print(f"Warning: Could not store commitment: {e}")
                     # Continue processing other commitments
             
-            # 8. Store individual quantifiable goals
-            for goal_data in quantifiable_goals:
+            # 8. Store quantifiable goals with batch operations
+            if quantifiable_goals:
                 try:
-                    self.store_quantifiable_goals(goal_data, session['id'])
+                    self.store_quantifiable_goals_batch(quantifiable_goals, session['id'], member_cache)
                 except Exception as e:
-                    print(f"Warning: Could not store quantifiable goal: {e}")
-                    # Continue processing other goals
+                    print(f"Warning: Could not store quantifiable goals: {e}")
+                    # Fallback to individual storage if batch fails
+                    for goal_data in quantifiable_goals:
+                        try:
+                            self.store_quantifiable_goals(goal_data, session['id'])
+                        except Exception as e2:
+                            print(f"Warning: Could not store quantifiable goal: {e2}")
             
             # 9. Vague goals are now automatically detected by database trigger when commitments are stored
             total_quantifiable = sum(len(g.get('quantifiable_goals', [])) for g in quantifiable_goals)
@@ -501,16 +515,48 @@ class TranscriptProcessor:
                 else:
                     print(f"Warning: Could not find member {participant} for risk assessment")
             
-            # 13. Extract marketing activities and pipeline outcomes
-            marketing_activities = self.extract_marketing_activities(transcript_text, session['id'], group_name, session_date)
-            pipeline_outcomes = self.extract_pipeline_outcomes(transcript_text, session['id'], group_name, session_date)
+            # 13-15. Extract additional data in parallel for better performance
+            # These extractions are independent and can run concurrently
+            marketing_activities = []
+            pipeline_outcomes = []
+            challenges_strategies = {'challenges': [], 'strategies': []}
+            stuck_signals = {'stuck_signals': []}
+            help_offers = []
             
-            # 14. Extract challenges and strategies
-            challenges_strategies = self.extract_challenges_and_strategies(transcript_text, session['id'], group_name, session_date)
+            print("🚀 Running parallel AI extractions...")
+            start_time = datetime.now()
             
-            # 15. Extract stuck signals and help offers
-            stuck_signals = self.extract_stuck_signals(transcript_text, session['id'], group_name, session_date)
-            help_offers = self.extract_help_offers(transcript_text, session['id'], group_name, session_date)
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                # Submit all independent extraction tasks
+                futures = {
+                    executor.submit(self.extract_marketing_activities, transcript_text, session['id'], group_name, session_date): 'marketing',
+                    executor.submit(self.extract_pipeline_outcomes, transcript_text, session['id'], group_name, session_date): 'pipeline',
+                    executor.submit(self.extract_challenges_and_strategies, transcript_text, session['id'], group_name, session_date): 'challenges',
+                    executor.submit(self.extract_stuck_signals, transcript_text, session['id'], group_name, session_date): 'stuck',
+                    executor.submit(self.extract_help_offers, transcript_text, session['id'], group_name, session_date): 'help'
+                }
+                
+                # Collect results as they complete
+                for future in as_completed(futures):
+                    task_name = futures[future]
+                    try:
+                        result = future.result()
+                        if task_name == 'marketing':
+                            marketing_activities = result
+                        elif task_name == 'pipeline':
+                            pipeline_outcomes = result
+                        elif task_name == 'challenges':
+                            challenges_strategies = result
+                        elif task_name == 'stuck':
+                            stuck_signals = result
+                        elif task_name == 'help':
+                            help_offers = result if isinstance(result, list) else []
+                        print(f"✅ Completed {task_name} extraction")
+                    except Exception as e:
+                        print(f"⚠️ Error in {task_name} extraction: {e}")
+            
+            elapsed = (datetime.now() - start_time).total_seconds()
+            print(f"⚡ Parallel extractions completed in {elapsed:.1f}s")
             
             # 16. Analyze sentiment and group health
             try:
@@ -854,8 +900,172 @@ class TranscriptProcessor:
             print(f"Error storing individual commitment: {e}")
             return False
     
+    def get_member_cached(self, name: str, member_cache: Dict) -> Dict:
+        """Get member with caching"""
+        if name not in member_cache:
+            member_cache[name] = self.get_member_by_name(name)
+        return member_cache[name]
+    
+    def store_quantifiable_goals_batch(self, all_goal_data: List[Dict], transcript_session_id: str, member_cache: Dict):
+        """Store quantifiable and non-quantifiable goals in batches for better performance"""
+        try:
+            # Collect all participant names and goals
+            all_participants = list(set([gd['participant_name'] for gd in all_goal_data]))
+            call_date = all_goal_data[0]['call_date'] if all_goal_data else None
+            group_name = all_goal_data[0]['group_name'] if all_goal_data else None
+            
+            # Batch fetch existing goals for deduplication
+            if all_participants and call_date and group_name:
+                # Build OR query for all participants
+                existing_goals_query = self.supabase.schema('peer_progress').table('quantifiable_goals').select('participant_name, goal_text, call_date, group_name')
+                
+                # Use 'in' filter instead of chaining ORs for better performance
+                existing_goals_query = existing_goals_query.in_('participant_name', all_participants)
+                existing_goals_query = existing_goals_query.eq('call_date', call_date).eq('group_name', group_name)
+                
+                existing_goals_result = existing_goals_query.execute()
+                
+                # Create deduplication set
+                existing_set = set()
+                for eg in existing_goals_result.data if existing_goals_result.data else []:
+                    normalized = ' '.join(eg['goal_text'].lower().strip().split())
+                    existing_set.add((eg['participant_name'], normalized, eg['call_date']))
+            else:
+                existing_set = set()
+            
+            # Prepare all goal records for batch insert
+            goal_records = []
+            progress_records = []
+            seen_in_batch = set()
+            
+            for goal_data in all_goal_data:
+                participant_name = goal_data['participant_name']
+                
+                # Get member with caching
+                member = self.get_member_cached(participant_name, member_cache)
+                member_id = member['id'] if member else None
+                
+                # Process quantifiable goals
+                for goal in goal_data.get('quantifiable_goals', []):
+                    goal_text = goal.get('goal_text', '').strip()
+                    normalized = ' '.join(goal_text.lower().split())
+                    batch_key = (participant_name, normalized, goal_data['call_date'])
+                    
+                    # Skip duplicates
+                    if normalized in seen_in_batch or batch_key in existing_set:
+                        print(f"⚠️ Skipping duplicate goal: {goal_text[:50]}...")
+                        continue
+                    seen_in_batch.add(normalized)
+                    
+                    # Prepare goal record
+                    target_number = goal.get('target_number', 1.0)
+                    try:
+                        target_number = float(target_number)
+                    except (ValueError, TypeError):
+                        target_number = 1.0
+                    
+                    goal_record = {
+                        'transcript_session_id': transcript_session_id,
+                        'member_id': member_id,
+                        'organization_id': self.organization_id,
+                        'participant_name': participant_name,
+                        'group_name': goal_data['group_name'],
+                        'call_date': goal_data['call_date'],
+                        'goal_text': goal_text,
+                        'target_number': target_number,
+                        'source_type': 'ai_extraction',
+                        'source_details': {
+                            'extraction_method': 'ai_transcript_analysis',
+                            'transcript_session_id': transcript_session_id,
+                            'confidence_score': goal.get('confidence_score', 0.8),
+                            'goal_type': 'quantifiable'
+                        },
+                        'updated_by': 'ai_system'
+                    }
+                    goal_records.append(goal_record)
+                
+                # Process non-quantifiable goals
+                for goal in goal_data.get('non_quantifiable_goals', []):
+                    goal_text = goal.get('goal_text', '').strip()
+                    normalized = ' '.join(goal_text.lower().split())
+                    batch_key = (participant_name, normalized, goal_data['call_date'])
+                    
+                    # Skip duplicates
+                    if normalized in seen_in_batch or batch_key in existing_set:
+                        print(f"⚠️ Skipping duplicate non-quantifiable goal: {goal_text[:50]}...")
+                        continue
+                    seen_in_batch.add(normalized)
+                    
+                    # Prepare goal record
+                    target_number = goal.get('target_number', 1.0)
+                    try:
+                        target_number = float(target_number)
+                    except (ValueError, TypeError):
+                        target_number = 1.0
+                    
+                    goal_record = {
+                        'transcript_session_id': transcript_session_id,
+                        'member_id': member_id,
+                        'organization_id': self.organization_id,
+                        'participant_name': participant_name,
+                        'group_name': goal_data['group_name'],
+                        'call_date': goal_data['call_date'],
+                        'goal_text': goal_text,
+                        'target_number': target_number,
+                        'source_type': 'ai_extraction',
+                        'source_details': {
+                            'extraction_method': 'ai_transcript_analysis',
+                            'transcript_session_id': transcript_session_id,
+                            'confidence_score': goal.get('confidence_score', 0.8),
+                            'goal_type': 'non_quantifiable'
+                        },
+                        'updated_by': 'ai_system'
+                    }
+                    goal_records.append(goal_record)
+            
+            # Batch insert all goals
+            if goal_records:
+                # Insert in chunks of 100 to avoid payload limits
+                chunk_size = 100
+                for i in range(0, len(goal_records), chunk_size):
+                    chunk = goal_records[i:i + chunk_size]
+                    result = self.supabase.schema('peer_progress').table('quantifiable_goals').insert(chunk).execute()
+                    
+                    # Prepare progress tracking records
+                    if result.data:
+                        for j, goal_record in enumerate(chunk):
+                            goal_id = result.data[j]['id'] if j < len(result.data) else None
+                            if goal_id:
+                                progress_records.append({
+                                    'quantifiable_goal_id': goal_id,
+                                    'organization_id': self.organization_id,
+                                    'member_id': goal_record.get('member_id'),
+                                    'current_value': 0,
+                                    'target_value': goal_record['target_number'],
+                                    'status': 'not_started',
+                                    'source_type': 'ai_extraction',
+                                    'source_details': {
+                                        'initial_setup': True,
+                                        'transcript_session_id': transcript_session_id
+                                    }
+                                })
+                
+                # Batch insert progress tracking
+                if progress_records:
+                    for i in range(0, len(progress_records), chunk_size):
+                        chunk = progress_records[i:i + chunk_size]
+                        self.supabase.schema('peer_progress').table('goal_progress_tracking').insert(chunk).execute()
+                
+                print(f"✅ Batch inserted {len(goal_records)} goals with {len(progress_records)} progress records")
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error in batch goal storage: {e}")
+            return False
+    
     def store_quantifiable_goals(self, goal_data: Dict, transcript_session_id: str):
-        """Store both quantifiable and non-quantifiable goals for a participant"""
+        """Store both quantifiable and non-quantifiable goals for a participant (fallback method)"""
         try:
             member = self.get_member_by_name(goal_data['participant_name'])
             member_id = member['id'] if member else None
@@ -2750,7 +2960,7 @@ class TranscriptProcessor:
         
         return stuck_signals
     
-    def extract_help_offers(self, transcript: str, transcript_session_id: str, group_name: str, session_date: str) -> Dict:
+    def extract_help_offers(self, transcript: str, transcript_session_id: str, group_name: str, session_date: str) -> List[Dict]:
         """Extract help offers from transcript using AI"""
         try:
             # Load the help offer extraction prompt
@@ -2772,11 +2982,11 @@ class TranscriptProcessor:
                 for offer in help_offers:
                     self._create_support_connection(offer)
             
-            return {'help_offers': help_offers}
+            return help_offers
             
         except Exception as e:
             print(f"Error extracting help offers: {e}")
-            return {'help_offers': []}
+            return []
     
     def _parse_help_offers(self, help_offers_text: str, transcript_session_id: str, group_name: str, session_date: str) -> List[Dict]:
         """Parse help offers from AI response"""
@@ -3190,12 +3400,46 @@ class TranscriptProcessor:
             return {'help_offers_given': [], 'stuck_signals': [], 'support_balance': 0}
     
     def update_goal_with_source(self, goal_id: str, updated_goal_data: Dict, source_type: str, updated_by: str, source_details: Dict = None) -> bool:
-        """Update a goal with source tracking information"""
+        """Update a goal with source tracking information
+        
+        Args:
+            goal_id: The ID of the goal to update
+            updated_goal_data: Dictionary with fields to update (goal_text, target_number, etc.)
+            source_type: One of 'ai_extraction', 'human_input', 'member_update', 'qa_clarification', 'system_generated'
+            updated_by: Name/ID of person or system making the update (e.g., 'Arlywagne', 'ai_system')
+            source_details: Optional dict with additional context:
+                - For qa_clarification: {'clarification_method': 'human_review', 'member_contacted': True/False, 'original_goal_text': '...'}
+                - For ai_extraction: {'extraction_method': 'ai_reanalysis', 'confidence_score': 0.8}
+                - For human_input: {'input_method': 'dashboard', 'notes': '...'}
+        """
         try:
             # Validate source_type
             valid_sources = ['ai_extraction', 'human_input', 'member_update', 'qa_clarification', 'system_generated']
             if source_type not in valid_sources:
                 raise ValueError(f"Invalid source_type. Must be one of: {valid_sources}")
+            
+            # Determine if this is human or AI based
+            is_human = source_type in ['human_input', 'member_update', 'qa_clarification']
+            is_ai = source_type == 'ai_extraction'
+            
+            # Build comprehensive source_details
+            enhanced_source_details = {
+                'source_type': source_type,
+                'updated_by': updated_by,
+                'update_timestamp': datetime.now().isoformat(),
+                'is_human_update': is_human,
+                'is_ai_update': is_ai,
+                **(source_details or {})
+            }
+            
+            # Add specific context based on source_type
+            if source_type == 'qa_clarification':
+                enhanced_source_details.setdefault('clarification_method', 'human_review')
+                enhanced_source_details.setdefault('qa_team_member', updated_by)
+            elif source_type == 'ai_extraction':
+                enhanced_source_details.setdefault('extraction_method', 'ai_transcript_analysis')
+            elif source_type == 'human_input':
+                enhanced_source_details.setdefault('input_method', 'manual_entry')
             
             # Prepare update data with source information
             update_data = {
@@ -3203,14 +3447,15 @@ class TranscriptProcessor:
                 'source_type': source_type,
                 'updated_by': updated_by,
                 'updated_at': 'now()',
-                'source_details': source_details or {}
+                'source_details': enhanced_source_details
             }
             
             # Update the goal
             result = self.supabase.schema('peer_progress').table('quantifiable_goals').update(update_data).eq('id', goal_id).execute()
             
             if result.data:
-                print(f"✅ Updated goal {goal_id} from {source_type} by {updated_by}")
+                source_desc = "human (QA)" if source_type == 'qa_clarification' else "human" if is_human else "AI"
+                print(f"✅ Updated goal {goal_id} from {source_desc} update by {updated_by}")
                 return True
             else:
                 print(f"❌ Failed to update goal {goal_id}")
@@ -3221,18 +3466,33 @@ class TranscriptProcessor:
             return False
     
     def update_vague_goal_with_clarification(self, vague_goal_id: str, clarification_data: Dict, updated_by: str, source_details: Dict = None) -> bool:
-        """Update a vague goal with clarification from human input (e.g., QA team)"""
+        """Update a vague goal with clarification from human input (e.g., QA team like Arlywagne)
+        
+        Args:
+            vague_goal_id: The ID of the vague goal to clarify
+            clarification_data: Dict with clarification info (quantifiable_goal_text, target_number, etc.)
+            updated_by: Name of QA team member (e.g., 'Arlywagne')
+            source_details: Optional dict with additional context:
+                - {'member_contacted': True/False, 'contact_method': 'email/slack', 'member_response': '...'}
+        """
         try:
+            # Build comprehensive source_details for human QA clarification
+            enhanced_source_details = {
+                'clarification_method': 'human_review',
+                'qa_team_member': updated_by,
+                'is_human_update': True,
+                'is_ai_update': False,
+                'update_timestamp': datetime.now().isoformat(),
+                **(source_details or {})
+            }
+            
             # Prepare update data for vague goal
             update_data = {
                 'status': 'clarified',
                 'source_type': 'qa_clarification',
                 'updated_by': updated_by,
                 'updated_at': 'now()',
-                'source_details': source_details or {
-                    'clarification_method': 'human_review',
-                    'qa_team_member': updated_by
-                }
+                'source_details': enhanced_source_details
             }
             
             # Update the vague goal
@@ -3279,7 +3539,10 @@ class TranscriptProcessor:
                 'source_details': {
                     'original_vague_goal_id': vague_goal_id,
                     'clarified_by': updated_by,
-                    'clarification_method': 'human_review'
+                    'clarification_method': 'human_review',
+                    'is_human_update': True,
+                    'is_ai_update': False,
+                    'update_timestamp': datetime.now().isoformat()
                 },
                 'updated_by': updated_by
             }

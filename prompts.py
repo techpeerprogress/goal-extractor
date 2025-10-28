@@ -110,92 +110,110 @@ Transcript:
 """
 
 MARKETING_ACTIVITY_EXTRACTION = """
-# Extract Marketing Activities
+Extract marketing activities by participant and classify them.
 
-**Task:** Find marketing activities by participant and classify them.
+Categories:
+- Network Activation: Outreach to existing relationships/referrals (warm intros, past clients, even if on LinkedIn)
+- LinkedIn: New relationships or engagement on LinkedIn (new connections, posting, commenting)
+- Cold Outreach: Contacting strangers outside LinkedIn (cold emails, cold calls)
 
-**Categories:**
-- **Network Activation**: Outreach to existing relationships/referrals
-- **LinkedIn**: New relationships or engagement on LinkedIn
-- **Cold Outreach**: Contacting strangers outside LinkedIn
-
-**Output Format:**
+Output Format:
 Name: [Participant Name]
 - Network Activation: [activity, qty if mentioned]
 - LinkedIn: [activity, qty if mentioned]
 - Cold Outreach: [activity, qty if mentioned]
 
-**Example:**
+If no marketing activity: "No marketing activity mentioned."
+
+Examples:
 Name: Juliana
 - Network Activation: DM'd 5 past clients on LinkedIn
-- LinkedIn: Posted twice to increase visibility
+- LinkedIn: Posted twice
+
+Name: Ben
+No marketing activity mentioned.
 
 Transcript:
 {transcript}
 """
 
 PIPELINE_OUTCOME_EXTRACTION = """
-# Extract Pipeline Outcomes
+Extract pipeline outcomes per participant: meetings, proposals, clients.
 
-**Task:** Find business outcomes (meetings, proposals, clients) by participant.
-
-**Output Format:**
+Output Format:
 Name: [Participant Name]
 Meetings: [#]
 Proposals: [#]
 Clients: [#]
 Notes: [brief context]
 
-**Example:**
+Use 0 if not mentioned.
+
+Examples:
 Name: Chris
 Meetings: 3
 Proposals: 1
 Clients: 0
 Notes: Three discovery calls, one proposal sent
 
----
+Name: Mackenzie
+Meetings: 0
+Proposals: 2
+Clients: 0
+Notes: Two proposals planned
 
 Transcript:
 {transcript}
 """
 
 CHALLENGE_STRATEGY_EXTRACTION = """
-# Extract Challenges & Strategies
+Extract participant challenges and strategies shared during the call. Tag each challenge with the most relevant category.
 
-**Task:** Find participant challenges and strategies shared during the call.
-
-**Output Format:**
+Output Format:
 Name: [Participant Name]
-Challenge: [Core challenge in 1-2 sentences]
-Category: [Challenge category]
+Challenge: [Summarize core challenge in 1-2 sentences. If implicit, infer clearly.]
+Category: [Pick ONE category from list below, or propose NEW CATEGORY if none fit]
 Strategies/Tips:
-- [Who shared it: summary + strategy type]
+- [Who shared it: short actionable summary + strategy type tag]
 
-**Challenge Categories:**
-- Clarity - Unclear goals/positioning
-- Lead Generation - Not enough leads
-- Sales & Conversion - Trouble converting
-- Systems & Operations - Process issues
-- Time & Focus - Overwhelm/priorities
-- Team & Delegation - Hiring/management
-- Mindset/Emotional - Fear/perfectionism
-- Scaling & Offers - Growth bottlenecks
-- Other - Doesn't fit above
+Challenge Categories:
+- Clarity - Unclear goals, positioning, priorities
+- Lead Generation - Not enough qualified leads, inconsistent pipeline
+- Sales & Conversion - Trouble converting leads, pricing issues, follow-up gaps
+- Systems & Operations - Lacking processes, delegation gaps, tool confusion
+- Time & Focus - Overwhelm, poor prioritization, no protected strategy time
+- Team & Delegation - Hiring, training, management issues
+- Mindset / Emotional - Fear, perfectionism, overthinking, burnout
+- Scaling & Offers - Bottlenecks moving from solo to leveraged model, unclear scalable offer
+- Other - Doesn't fit above (propose new category if needed like [NEW CATEGORY: Partnerships])
 
-**Strategy Types:**
-- Mindset Reframe - Perspective shift
-- Tactical Process - Step-by-step method
-- Tool/Resource - Specific tool/template
-- Connection/Referral - Intro/networking
-- Framework/Model - Structure/methodology
+Strategy Type Tags:
+- Mindset Reframe - Perspective or belief shift
+- Tactical Process - Step-by-step action or method
+- Tool / Resource Suggestion - Specific tool, template, or resource
+- Connection / Referral - Intro, referral, or networking suggestion
+- Framework / Model Shared - Structure, model, or named methodology
 
-**Example:**
+Rules:
+- Challenge can be explicit or implicit (infer if needed)
+- Strategies can come from anyone (facilitator, peers, or themselves)
+- Ignore casual chatter and vague venting
+- Be concise and actionable
+
+Examples:
 Name: Juliana
-Challenge: Unclear how to structure recurring CFO services offer
+Challenge: She's unclear on how to structure her recurring offer for CFO services, leading to inconsistent proposals.
 Category: Scaling & Offers
 Strategies/Tips:
-- Tanya: Create simple recurring retainer anchored on one outcome (Tactical Process)
-- Kevin: Talk to 3 current clients to identify monthly service (Tactical Process)
+- Tanya suggested creating a simple recurring retainer anchored on one clear outcome. (Tactical Process)
+- Kevin recommended talking to 3 current clients this week to identify which service they'd pay for monthly. (Tactical Process)
+
+Name: Jeff
+Challenge: Implicit - He's doing a lot of marketing activity but not booking meetings, indicating a messaging misalignment.
+Category: Lead Generation
+Strategies/Tips:
+- Juliana shared how refining her LinkedIn headline led to 5 new calls in 2 weeks. (Tactical Process)
+- Tanya advised focusing on one marketing channel for 4 weeks instead of juggling three. (Tactical Process)
 
 Transcript:
 {transcript}
@@ -233,35 +251,48 @@ Classified Commitments:
 """
 
 STUCK_SIGNAL_EXTRACTION = """
-# Extract Stuck Signals
+You are an expert mastermind transcript analyst. Identify when participants express being stuck, stalled, or not making progress.
 
-**Task:** Find when participants express being stuck, stalled, or not making progress.
+Look for:
+- Self-reported stuckness: "I'm stuck," "I haven't done anything," "I don't know why," "I can't seem to move forward"
+- Implied stuckness: repeating same goal for multiple weeks, "spinning wheels," "lapses," "feeling off"
+- Low momentum, overwhelm, confusion, procrastination, emotional blockers
 
-**Output Format:**
-### [PARTICIPANT NAME]
-**Stuck Summary:** [What kind of stuckness and why]
-**Exact Quotes:** [1-3 revealing quotes]
-**Timestamp:** (Start–End)
-**Classification:** [Momentum Drop/Emotional Block/Overwhelm/Decision Paralysis/Repeating Goal/Other]
-**Suggested Nudge:** [Light-touch suggestion]
+Output Format:
+[PARTICIPANT NAME]
+Stuck Summary:
+[Briefly explain what kind of stuckness and why - motivation lapse, repeating old goals, overwhelm, unclear next steps, emotional stuckness]
+Exact Quotes:
+[1-3 most revealing quotes verbatim]
+Timestamp:
+(Start-End)
+Stuck Classification:
+[Momentum Drop / Emotional Block / Overwhelm / Decision Paralysis / Repeating Goal / Other]
+Potential Next Step or Nudge (Optional):
+[Light-touch suggestion, e.g., "Book momentum-reset session," "Break into micro-goals," "Pair up for co-working"]
 
-**Classifications:**
-- **Momentum Drop:** Lost rhythm/progress temporarily
-- **Emotional Block:** Frustration, fear, perfectionism loops
-- **Overwhelm:** Too many things, unclear priorities
-- **Decision Paralysis:** Unsure which path to take
-- **Repeating Goal:** Same goal multiple weeks without movement
-- **Other:** Doesn't fit above
+Classifications:
+- Momentum Drop: Lost rhythm/progress temporarily ("I haven't done anything for two weeks")
+- Emotional Block: Frustration, shame, fear, perfectionism loops ("I don't know why, I just can't get started")
+- Overwhelm: Too many things, unclear priorities, capacity issues
+- Decision Paralysis: Unsure which path to take
+- Repeating Goal: Same goal multiple weeks without movement
+- Other: Doesn't fit above
 
-**Example:**
-### Mack Earnhardt
-**Stuck Summary:** Felt completely stuck for two weeks, can't get off "Square Zero"
-**Exact Quotes:** 
-- "I have felt completely stuck for the last two weeks"
-- "I just can't seem to get… off of Square Zero"
-**Timestamp:** (48m 45s–49m 44s)
-**Classification:** Momentum Drop + Emotional Block
-**Suggested Nudge:** Book momentum reset session, break into 1-2 micro-goals
+Example:
+Mack Earnhardt
+Stuck Summary:
+Mack felt completely stuck for the last two weeks, describing lapses where he can't get off "Square Zero." He's made no progress on his goals and is still working on the same thing from two weeks ago.
+Exact Quotes:
+"I have felt completely stuck for the last two weeks."
+"I don't feel like I've gotten anything done."
+"I just can't seem to get… off of Square Zero."
+Timestamp:
+(48m 45s–49m 44s)
+Stuck Classification:
+Momentum Drop + Emotional Block
+Potential Next Step or Nudge (Optional):
+Book a short momentum reset session and break the work into 1-2 micro-goals to rebuild rhythm.
 
 Transcript:
 {transcript}

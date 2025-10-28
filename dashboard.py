@@ -150,20 +150,60 @@ def fetch_member_changes(supabase: Client, organization_id: str = None):
         st.error(f"Error fetching member changes: {e}")
         return []
 
-def fetch_marketing_activities(supabase: Client, organization_id: str = None):
-    """Fetch marketing activities"""
+def fetch_marketing_activities(supabase: Client, organization_id: str = None, start_date: str = None, end_date: str = None):
+    """Fetch marketing activities with optional date filtering"""
     try:
-        result = supabase.schema('peer_progress').table('marketing_activities').select('*').order('session_date', desc=True).execute()
+        query = supabase.schema('peer_progress').table('marketing_activities').select('*')
+        
+        if organization_id:
+            query = query.eq('organization_id', organization_id)
+        if start_date:
+            query = query.gte('session_date', start_date)
+        if end_date:
+            query = query.lte('session_date', end_date)
+        
+        result = query.order('session_date', desc=True).execute()
         return result.data if result.data else []
     except Exception as e:
         st.error(f"Error fetching marketing activities: {e}")
         return []
 
-def fetch_challenges_strategies(supabase: Client, organization_id: str = None):
-    """Fetch challenges and strategies"""
+def fetch_pipeline_outcomes(supabase: Client, organization_id: str = None, start_date: str = None, end_date: str = None):
+    """Fetch pipeline outcomes with optional date filtering"""
     try:
-        challenges_result = supabase.schema('peer_progress').table('challenges').select('*').order('session_date', desc=True).execute()
-        strategies_result = supabase.schema('peer_progress').table('strategies').select('*').order('created_at', desc=True).execute()
+        query = supabase.schema('peer_progress').table('pipeline_outcomes').select('*')
+        
+        if organization_id:
+            query = query.eq('organization_id', organization_id)
+        if start_date:
+            query = query.gte('session_date', start_date)
+        if end_date:
+            query = query.lte('session_date', end_date)
+        
+        result = query.order('session_date', desc=True).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        st.error(f"Error fetching pipeline outcomes: {e}")
+        return []
+
+def fetch_challenges_strategies(supabase: Client, organization_id: str = None, start_date: str = None, end_date: str = None):
+    """Fetch challenges and strategies with optional date filtering"""
+    try:
+        challenges_query = supabase.schema('peer_progress').table('challenges').select('*')
+        strategies_query = supabase.schema('peer_progress').table('strategies').select('*')
+        
+        if organization_id:
+            challenges_query = challenges_query.eq('organization_id', organization_id)
+            strategies_query = strategies_query.eq('organization_id', organization_id)
+        if start_date:
+            challenges_query = challenges_query.gte('session_date', start_date)
+            strategies_query = strategies_query.gte('created_at', start_date)
+        if end_date:
+            challenges_query = challenges_query.lte('session_date', end_date)
+            strategies_query = strategies_query.lte('created_at', end_date)
+        
+        challenges_result = challenges_query.order('session_date', desc=True).execute()
+        strategies_result = strategies_query.order('created_at', desc=True).execute()
         
         return {
             'challenges': challenges_result.data if challenges_result.data else [],
@@ -173,12 +213,29 @@ def fetch_challenges_strategies(supabase: Client, organization_id: str = None):
         st.error(f"Error fetching challenges/strategies: {e}")
         return {'challenges': [], 'strategies': []}
 
-def fetch_stuck_signals(supabase: Client, organization_id: str = None):
-    """Fetch stuck signals and help offers"""
+def fetch_stuck_signals(supabase: Client, organization_id: str = None, start_date: str = None, end_date: str = None):
+    """Fetch stuck signals and help offers with optional date filtering"""
     try:
-        stuck_result = supabase.schema('peer_progress').table('stuck_signals').select('*').order('created_at', desc=True).execute()
-        help_result = supabase.schema('peer_progress').table('help_offers').select('*').order('created_at', desc=True).execute()
-        sentiment_result = supabase.schema('peer_progress').table('call_sentiment').select('*').order('session_date', desc=True).execute()
+        stuck_query = supabase.schema('peer_progress').table('stuck_signals').select('*')
+        help_query = supabase.schema('peer_progress').table('help_offers').select('*')
+        sentiment_query = supabase.schema('peer_progress').table('call_sentiment').select('*')
+        
+        if organization_id:
+            stuck_query = stuck_query.eq('organization_id', organization_id)
+            help_query = help_query.eq('organization_id', organization_id)
+            sentiment_query = sentiment_query.eq('organization_id', organization_id)
+        if start_date:
+            stuck_query = stuck_query.gte('session_date', start_date)
+            help_query = help_query.gte('created_at', start_date)
+            sentiment_query = sentiment_query.gte('session_date', start_date)
+        if end_date:
+            stuck_query = stuck_query.lte('session_date', end_date)
+            help_query = help_query.lte('created_at', end_date)
+            sentiment_query = sentiment_query.lte('session_date', end_date)
+        
+        stuck_result = stuck_query.order('created_at', desc=True).execute()
+        help_result = help_query.order('created_at', desc=True).execute()
+        sentiment_result = sentiment_query.order('session_date', desc=True).execute()
         
         return {
             'stuck_signals': stuck_result.data if stuck_result.data else [],
@@ -377,23 +434,6 @@ def show_quantifiable_goals_tab(supabase: Client):
         unique_participants = len(set([g.get('participant_name', '') for g in goals]))
         st.metric("Active Participants", unique_participants)
     
-    # Source breakdown chart
-    if goals:
-        st.subheader("📊 Goal Sources")
-        source_counts = {}
-        for goal in goals:
-            source = goal.get('source_type', 'ai_extraction')
-            source_counts[source] = source_counts.get(source, 0) + 1
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.bar_chart(source_counts)
-        with col2:
-            for source, count in source_counts.items():
-                percentage = (count / len(goals)) * 100
-                source_label = "🤖 AI Extraction" if source == 'ai_extraction' else "👤 Manual Input" if source == 'human_input' else f"📝 {source}"
-                st.write(f"{source_label}: {count} ({percentage:.1f}%)")
-    
     st.subheader("🔍 Additional Filters")
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -500,8 +540,25 @@ def show_quantifiable_goals_tab(supabase: Client):
                 source_type = goal.get('source_type', 'ai_extraction')
                 target_number = goal.get('target_number', 'N/A')
                 
-                # Source badge
-                source_badge = "🤖 AI" if source_type == 'ai_extraction' else "👤 Manual" if source_type == 'human_input' else f"📝 {source_type}"
+                # Determine source badge and description
+                source_details = goal.get('source_details', {})
+                is_human = source_details.get('is_human_update', False) or source_type in ['human_input', 'qa_clarification', 'member_update']
+                is_ai = source_details.get('is_ai_update', False) or source_type == 'ai_extraction'
+                
+                if source_type == 'qa_clarification':
+                    source_badge = "👤 QA (Human)"
+                    updated_by = goal.get('updated_by', 'Unknown')
+                    source_desc = f"Clarified by {updated_by}"
+                elif source_type == 'human_input':
+                    source_badge = "👤 Human"
+                    updated_by = goal.get('updated_by', 'Unknown')
+                    source_desc = f"Manual entry by {updated_by}"
+                elif source_type == 'ai_extraction':
+                    source_badge = "🤖 AI"
+                    source_desc = "AI transcript analysis"
+                else:
+                    source_badge = f"📝 {source_type}"
+                    source_desc = source_type
                 
                 col1, col2 = st.columns([3, 1])
                 
@@ -512,6 +569,7 @@ def show_quantifiable_goals_tab(supabase: Client):
                     
                 with col2:
                     st.write(f"**Source:** {source_badge}")
+                    st.caption(source_desc)
                     
                     # Progress tracking for quantifiable goals
                     progress = st.slider(f"Progress {i} (%)", 0, 100, 0, key=f"progress_{goal['id']}")
@@ -519,15 +577,35 @@ def show_quantifiable_goals_tab(supabase: Client):
                         st.info(f"Progress update for goal {i} would be implemented here")
                 
                 # Show source details if available
-                source_details = goal.get('source_details', {})
                 if source_details:
                     with st.expander(f"Details for Goal {i}", expanded=False):
-                        if source_type == 'ai_extraction':
+                        # Show update source clearly
+                        if source_details.get('is_human_update'):
+                            st.write("**Update Source:** 👤 Human")
+                            if source_type == 'qa_clarification':
+                                qa_member = source_details.get('qa_team_member', goal.get('updated_by', 'Unknown'))
+                                st.write(f"- Clarified by: {qa_member}")
+                                if source_details.get('member_contacted'):
+                                    st.write(f"- Member was contacted: Yes")
+                        elif source_details.get('is_ai_update'):
+                            st.write("**Update Source:** 🤖 AI")
                             confidence = source_details.get('confidence_score', 'N/A')
                             st.write(f"- Confidence: {confidence}")
                             st.write(f"- Method: AI Transcript Analysis")
+                        
+                        # Show update timestamp if available
+                        update_timestamp = source_details.get('update_timestamp')
+                        if update_timestamp:
+                            st.write(f"- Updated: {update_timestamp}")
+                        
+                        # Show additional context based on source type
+                        if source_type == 'qa_clarification':
+                            clarification_method = source_details.get('clarification_method', 'N/A')
+                            st.write(f"- Method: {clarification_method}")
+                            if source_details.get('original_vague_goal_id'):
+                                st.write(f"- Original vague goal was clarified")
                         elif source_type == 'human_input':
-                            input_method = source_details.get('input_method', 'N/A')
+                            input_method = source_details.get('input_method', 'manual_entry')
                             st.write(f"- Method: {input_method}")
                             notes = source_details.get('notes', '')
                             if notes:
@@ -678,7 +756,53 @@ def show_marketing_activities_tab(supabase: Client):
     """Display marketing activities and pipeline outcomes"""
     st.header("📈 Marketing Activities & Pipeline")
     
-    activities = fetch_marketing_activities(supabase)
+    st.subheader("📅 Date Filter")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        start_date = st.date_input("Start Date", value=None, key="marketing_start_date")
+    with col2:
+        end_date = st.date_input("End Date", value=None, key="marketing_end_date")
+    with col3:
+        if st.button("Clear Date Filter", key="marketing_clear"):
+            st.rerun()
+    
+    start_date_str = start_date.strftime('%Y-%m-%d') if start_date else None
+    end_date_str = end_date.strftime('%Y-%m-%d') if end_date else None
+    
+    activities = fetch_marketing_activities(supabase, start_date=start_date_str, end_date=end_date_str)
+    pipeline_outcomes = fetch_pipeline_outcomes(supabase, start_date=start_date_str, end_date=end_date_str)
+    
+    if not activities and not pipeline_outcomes:
+        st.info("📝 No marketing activities or pipeline outcomes found.")
+        return
+    
+    # Show pipeline outcomes section
+    if pipeline_outcomes:
+        st.subheader("🎯 Pipeline Outcomes")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            total_meetings = sum([p.get('meetings', 0) for p in pipeline_outcomes])
+            st.metric("Total Meetings", total_meetings)
+        with col2:
+            total_proposals = sum([p.get('proposals', 0) for p in pipeline_outcomes])
+            st.metric("Total Proposals", total_proposals)
+        with col3:
+            total_clients = sum([p.get('clients', 0) for p in pipeline_outcomes])
+            st.metric("Total Clients", total_clients)
+        with col4:
+            unique_participants_pipeline = len(set([p.get('participant_name', '') for p in pipeline_outcomes]))
+            st.metric("Participants", unique_participants_pipeline)
+        
+        # Recent pipeline outcomes table
+        st.subheader("Recent Pipeline Outcomes")
+        pipeline_df = pd.DataFrame(pipeline_outcomes)
+        if not pipeline_df.empty:
+            display_cols = ['participant_name', 'meetings', 'proposals', 'clients', 'session_date', 'notes']
+            available_cols = [col for col in display_cols if col in pipeline_df.columns]
+            st.dataframe(pipeline_df[available_cols].head(10))
+        
+        st.divider()
     
     if not activities:
         st.info("📝 No marketing activities found.")
@@ -719,7 +843,21 @@ def show_challenges_strategies_tab(supabase: Client):
     """Display challenges and strategies"""
     st.header("🧠 Challenges & Strategies")
     
-    data = fetch_challenges_strategies(supabase)
+    st.subheader("📅 Date Filter")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        start_date = st.date_input("Start Date", value=None, key="challenges_start_date")
+    with col2:
+        end_date = st.date_input("End Date", value=None, key="challenges_end_date")
+    with col3:
+        if st.button("Clear Date Filter", key="challenges_clear"):
+            st.rerun()
+    
+    start_date_str = start_date.strftime('%Y-%m-%d') if start_date else None
+    end_date_str = end_date.strftime('%Y-%m-%d') if end_date else None
+    
+    data = fetch_challenges_strategies(supabase, start_date=start_date_str, end_date=end_date_str)
     challenges = data['challenges']
     strategies = data['strategies']
     
@@ -770,7 +908,21 @@ def show_stuck_frustrated_supported_tab(supabase: Client):
     """Display stuck signals, help offers, and sentiment analysis"""
     st.header("🚨 Group Health: Stuck/Frustrated/Supported")
     
-    data = fetch_stuck_signals(supabase)
+    st.subheader("📅 Date Filter")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        start_date = st.date_input("Start Date", value=None, key="stuck_start_date")
+    with col2:
+        end_date = st.date_input("End Date", value=None, key="stuck_end_date")
+    with col3:
+        if st.button("Clear Date Filter", key="stuck_clear"):
+            st.rerun()
+    
+    start_date_str = start_date.strftime('%Y-%m-%d') if start_date else None
+    end_date_str = end_date.strftime('%Y-%m-%d') if end_date else None
+    
+    data = fetch_stuck_signals(supabase, start_date=start_date_str, end_date=end_date_str)
     stuck_signals = data['stuck_signals']
     help_offers = data['help_offers']
     sentiment_data = data['sentiment']
