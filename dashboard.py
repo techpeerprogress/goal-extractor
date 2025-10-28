@@ -874,8 +874,8 @@ def main():
     
     # Main tabs
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🚨 Vague Goals", 
         "🎯 Quantifiable Goals", 
+        "🚨 Vague Goals", 
         "📢 Community Posting",
         "📊 Attendance & Achievement",
         "📝 Member Changes"
@@ -889,10 +889,10 @@ def main():
     ])
     
     with tab1:
-        show_vague_goals_tab(supabase)
+        show_quantifiable_goals_tab(supabase)
     
     with tab2:
-        show_quantifiable_goals_tab(supabase)
+        show_vague_goals_tab(supabase)
     
     with tab3:
         show_community_posting_tab(supabase)
