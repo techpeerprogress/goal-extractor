@@ -1,3 +1,4 @@
+from typing import Any
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -288,11 +289,11 @@ def show_vague_goals_tab(supabase: Client):
     # Filter options
     col1, col2, col3 = st.columns(3)
     with col1:
-        participant_filter = st.selectbox("Filter by Participant", ["All"] + list(set([g.get('participant_name', '') for g in vague_goals])), key="vague_participant_filter")
+        participant_filter = st.selectbox("Filter by Participant", ["All"] + list[Any](set[Any]([g.get('participant_name', '') for g in vague_goals])), key="vague_participant_filter")
     with col2:
-        source_filter = st.selectbox("Filter by Source", ["All"] + list(set([g.get('source_type', '') for g in vague_goals])), key="vague_source_filter")
+        source_filter = st.selectbox("Filter by Source", ["All"] + list[Any](set[Any]([g.get('source_type', '') for g in vague_goals])), key="vague_source_filter")
     with col3:
-        group_filter = st.selectbox("Filter by Group", ["All"] + list(set([g.get('group_name', '') for g in vague_goals])), key="vague_group_filter")
+        group_filter = st.selectbox("Filter by Group", ["All"] + list[Any](set[Any]([g.get('group_name', '') for g in vague_goals])), key="vague_group_filter")
     
     # Apply filters
     filtered_goals = vague_goals
@@ -431,15 +432,15 @@ def show_quantifiable_goals_tab(supabase: Client):
         manual_goals = len([g for g in goals if g.get('source_type') == 'human_input'])
         st.metric("👤 Manual Goals", manual_goals)
     with col4:
-        unique_participants = len(set([g.get('participant_name', '') for g in goals]))
+        unique_participants = len(set[Any]([g.get('participant_name', '') for g in goals]))
         st.metric("Active Participants", unique_participants)
     
     st.subheader("🔍 Additional Filters")
     col1, col2, col3 = st.columns(3)
     with col1:
-        participant_filter = st.selectbox("Filter by Participant", ["All"] + list(set([g.get('participant_name', '') for g in goals])), key="quantifiable_participant_filter")
+        participant_filter = st.selectbox("Filter by Participant", ["All"] + list[Any](set[Any]([g.get('participant_name', '') for g in goals])), key="quantifiable_participant_filter")
     with col2:
-        source_filter = st.selectbox("Filter by Source", ["All"] + list(set([g.get('source_type', '') for g in goals])), key="quantifiable_source_filter")
+        source_filter = st.selectbox("Filter by Source", ["All"] + list[Any](set[Any]([g.get('source_type', '') for g in goals])), key="quantifiable_source_filter")
     with col3:
         if st.button("➕ Add Manual Goal"):
             st.session_state.show_manual_goal_form = True
@@ -794,13 +795,23 @@ def show_marketing_activities_tab(supabase: Client):
             unique_participants_pipeline = len(set([p.get('participant_name', '') for p in pipeline_outcomes]))
             st.metric("Participants", unique_participants_pipeline)
         
-        # Recent pipeline outcomes table
-        st.subheader("Recent Pipeline Outcomes")
-        pipeline_df = pd.DataFrame(pipeline_outcomes)
-        if not pipeline_df.empty:
-            display_cols = ['participant_name', 'meetings', 'proposals', 'clients', 'session_date', 'notes']
-            available_cols = [col for col in display_cols if col in pipeline_df.columns]
-            st.dataframe(pipeline_df[available_cols].head(10))
+        # Pipeline outcomes table - display as clean table
+        st.subheader("📊 Pipeline Outcomes by Participant")
+        if pipeline_outcomes:
+            # Create summary table
+            display_data = []
+            for outcome in pipeline_outcomes:
+                display_data.append({
+                    'Participant': outcome.get('participant_name', 'Unknown'),
+                    'Session Date': outcome.get('session_date', 'N/A'),
+                    'Meetings': outcome.get('meetings', 0),
+                    'Proposals': outcome.get('proposals', 0),
+                    'Clients': outcome.get('clients', 0),
+                    'Notes': outcome.get('notes', '')[:50] + '...' if outcome.get('notes', '') and len(outcome.get('notes', '')) > 50 else outcome.get('notes', '')
+                })
+            
+            df_display = pd.DataFrame(display_data)
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
         
         st.divider()
     
@@ -828,8 +839,8 @@ def show_marketing_activities_tab(supabase: Client):
     # Activity type breakdown
     if activities_by_type:
         st.subheader("Activity Type Breakdown")
-        fig = px.pie(values=list(activities_by_type.values()), 
-                     names=list(activities_by_type.keys()),
+        fig = px.pie(values=list[Any](activities_by_type.values()), 
+                     names=list[Any](activities_by_type.keys()),
                      title="Marketing Activities by Type")
         st.plotly_chart(fig, use_container_width=True)
     
@@ -883,8 +894,8 @@ def show_challenges_strategies_tab(supabase: Client):
             challenge_categories[category] = challenge_categories.get(category, 0) + 1
         
         st.subheader("Challenge Categories")
-        fig = px.bar(x=list(challenge_categories.keys()), 
-                     y=list(challenge_categories.values()),
+        fig = px.bar(x=list[Any](challenge_categories.keys()), 
+                     y=list[Any](challenge_categories.values()),
                      title="Challenges by Category")
         st.plotly_chart(fig, use_container_width=True)
     
