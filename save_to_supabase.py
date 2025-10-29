@@ -203,18 +203,24 @@ def _parse_participant_content(content: str, participant_name: str) -> Optional[
             else:
                 classification_clean = ""
             
-            # Map to database values
+            # Map to database values - check most specific first
             if classification_clean:
-                if 'Quantifiable' in classification_clean and 'Not' not in classification_clean:
+                # Check exact matches first (case-insensitive for robustness)
+                clean_lower = classification_clean.lower()
+                if clean_lower == 'quantifiable' or (clean_lower.startswith('quantifiable') and 'not' not in clean_lower):
                     data['classification'] = 'quantifiable'
-                elif 'Not Quantifiable' in classification_clean:
+                elif 'not quantifiable' in clean_lower:
                     data['classification'] = 'not_quantifiable'
-                elif 'No Goal' in classification_clean:
+                elif 'no goal' in clean_lower:
                     data['classification'] = 'no_goal'
-                elif 'Decision Pending' in classification_clean:
+                elif 'decision pending' in clean_lower:
                     data['classification'] = 'decision_pending'
                 else:
-                    data['classification'] = 'not_quantifiable'  # Default fallback
+                    # Fallback: check if it contains "Quantifiable" without "Not"
+                    if 'quantifiable' in clean_lower and 'not' not in clean_lower:
+                        data['classification'] = 'quantifiable'
+                    else:
+                        data['classification'] = 'not_quantifiable'  # Default fallback
             else:
                 data['classification'] = 'not_quantifiable'  # Default fallback
             

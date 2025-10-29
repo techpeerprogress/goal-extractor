@@ -1,95 +1,130 @@
 """
 Streamlit dashboard to display extracted goals from transcripts.
-Displays the exact output format from quantifiable_goals.txt
+Reads data directly from Supabase.
 """
 
 import streamlit as st
 import re
+import os
 from typing import List, Dict
+from dotenv import load_dotenv
+from supabase import create_client, Client
 
-def parse_goals_file(filepath: str) -> List[Dict]:
-    """Parse the quantifiable_goals.txt file maintaining the exact format"""
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            content = f.read()
-    except Exception as e:
-        import streamlit as st
-        st.error(f"Error reading file {filepath}: {e}")
+load_dotenv()
+
+def get_supabase_client() -> Client:
+    """Create and return Supabase client"""
+    supabase_url = os.getenv('SUPABASE_URL')
+    supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
+    
+    if not supabase_url or not supabase_key:
+        return None
+    
+    return create_client(supabase_url, supabase_key)
+
+def load_groups_from_supabase(organization_id: str = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e') -> List[Dict]:
+    """Load groups and goals from Supabase"""
+    supabase = get_supabase_client()
+    if not supabase:
         return []
     
-    groups = []
-    
-    # Find all File: sections - they're followed by separator and then content
-    # Handle both old format (without Session Date) and new format (with Session Date)
-    # Pattern: File: ... (may have Session Date line, then separator)
-    file_pattern = r'File: (.+?)(?=\n)'
-    file_matches = list(re.finditer(file_pattern, content, re.MULTILINE))
-    
-    for i, match in enumerate(file_matches):
-        group_name = match.group(1).strip()
+    try:
+        # Get all transcript sessions
+        sessions_result = supabase.schema('peer_progress').table('transcript_sessions').select('*').eq(
+            'organization_id', organization_id
+        ).order('session_date', desc=True).execute()
         
-        # Find the start position after the File: line
-        content_start = match.end()
+        sessions = sessions_result.data if sessions_result.data else []
         
-        # Move to the end of the File: line
-        while content_start < len(content) and content[content_start] != '\n':
-            content_start += 1
-        content_start += 1  # Skip newline after File: line
+        groups = []
         
-        # Look for Session Date line after File: line (optional)
-        session_date = None
-        if content_start < len(content):
-            # Check if next line is "Session Date:"
-            date_line_start = content_start
-            date_line_end = date_line_start
-            while date_line_end < len(content) and content[date_line_end] != '\n':
-                date_line_end += 1
+        for session in sessions:
+            session_id = session['id']
+            group_name = session.get('group_name', session.get('filename', 'Unknown Group'))
+            session_date = session.get('session_date', 'Unknown')
             
-            date_line = content[date_line_start:date_line_end].strip()
-            if date_line.startswith('Session Date:'):
-                session_date = date_line.replace('Session Date:', '').strip()
-                content_start = date_line_end + 1  # Move past Session Date line
+            # Get all goals for this session
+            goals_result = supabase.schema('peer_progress').table('quantifiable_goals').select('*').eq(
+                'transcript_session_id', session_id
+            ).execute()
+            
+            goals = goals_result.data if goals_result.data else []
+            
+            # Format content similar to text file format
+            content_parts = []
+            
+            for goal in goals:
+                participant_name = goal.get('participant_name', 'Unknown')
+                source_details = goal.get('source_details', {}) or {}
+                
+                content_parts.append(f"### {participant_name}\n")
+                content_parts.append("\n**What They Discussed:**\n\n")
+                
+                if source_details.get('discussion'):
+                    content_parts.append(f"{source_details['discussion']}\n")
+                
+                content_parts.append("\n**Their Commitment for Next Week:**\n\n")
+                goal_text = goal.get('goal_text', 'No specific commitment made')
+                content_parts.append(f"{goal_text}\n")
+                
+                content_parts.append("\n**Classification:**\n\n")
+                classification = source_details.get('classification', 'not_quantifiable')
+                
+                # Map database classification to display format
+                if classification == 'quantifiable':
+                    content_parts.append("Quantifiable\n")
+                elif classification == 'not_quantifiable':
+                    content_parts.append("Not Quantifiable\n")
+                elif classification == 'no_goal':
+                    content_parts.append("No Goal\n")
+                elif classification == 'decision_pending':
+                    content_parts.append("Decision Pending\n")
+                else:
+                    content_parts.append("Not Quantifiable\n")
+                
+                if source_details.get('classification_reason'):
+                    content_parts.append("\n**Why This Classification:**\n\n")
+                    content_parts.append(f"{source_details['classification_reason']}\n")
+                
+                if source_details.get('exact_quote'):
+                    content_parts.append("\n**Exact Quote:**\n\n")
+                    content_parts.append(f"{source_details['exact_quote']}\n")
+                
+                if source_details.get('timestamp'):
+                    content_parts.append("\n**Timestamp:**\n\n")
+                    content_parts.append(f"{source_details['timestamp']}\n")
+                
+                if source_details.get('how_to_quantify'):
+                    content_parts.append("\n**How to Make It Quantifiable:**\n\n")
+                    content_parts.append(f"{source_details['how_to_quantify']}\n")
+                
+                if source_details.get('nudge_message'):
+                    content_parts.append("\n**Personalized Accountability Nudge Message:**\n\n")
+                    nudge = source_details['nudge_message']
+                    # Add blockquote markers if not already present
+                    nudge_lines = nudge.split('\n')
+                    for line in nudge_lines:
+                        if not line.strip().startswith('>'):
+                            content_parts.append(f"> {line}\n")
+                        else:
+                            content_parts.append(f"{line}\n")
+                
+                content_parts.append("\n---\n\n")
+            
+            groups.append({
+                'name': group_name,
+                'content': ''.join(content_parts),
+                'session_date': session_date or 'Unknown'
+            })
         
-        # Now find the separator line (========)
-        while content_start < len(content) and content[content_start] != '=':
-            content_start += 1
-        
-        # Skip the entire separator line
-        while content_start < len(content) and content[content_start] != '\n':
-            content_start += 1
-        content_start += 1  # Skip the newline after separator
-        
-        # Skip any empty lines after the separator
-        while content_start < len(content) and content[content_start] == '\n':
-            content_start += 1
-        
-        # Find the end of this section (next File: or end of file)
-        if i + 1 < len(file_matches):
-            # Find the start of the next File: section
-            content_end = file_matches[i + 1].start()
-            # Move backward to find the start of the separator before the next File:
-            # We want to stop before the separator line
-            temp_end = content_end
-            while temp_end > 0 and content[temp_end - 1] != '\n':
-                temp_end -= 1
-            if temp_end > content_start:
-                content_end = temp_end
-        else:
-            content_end = len(content)
-        
-        # Extract the content (don't strip initially to preserve structure)
-        group_content = content[content_start:content_end]
-        # Remove trailing separator if present
-        group_content = re.sub(r'\n={80,}\s*$', '', group_content)
-        group_content = group_content.strip()
-        
-        groups.append({
-            'name': group_name,
-            'content': group_content,
-            'session_date': session_date or 'Unknown'
-        })
+        return groups
     
-    return groups
+    except Exception as e:
+        st.error(f"Error loading from Supabase: {e}")
+        import traceback
+        with st.expander("Error Details"):
+            st.code(traceback.format_exc())
+        return []
 
 def format_content_with_indicators(content: str):
     """Format content and add visual indicators for classifications"""
@@ -189,41 +224,49 @@ def main():
     st.title("🎯 Goal Extractor Dashboard")
     st.markdown("View quantifiable and non-quantifiable goals extracted from mastermind transcripts")
     
-    # File path
-    import os
-    # Try multiple possible paths
-    possible_paths = [
-        "quantifiable_goals.txt",  # Current directory
-        os.path.join(os.path.dirname(__file__), "quantifiable_goals.txt") if __file__ else None,  # Script directory
-    ]
-    
-    goals_file = None
-    for path in possible_paths:
-        if path and os.path.exists(path):
-            goals_file = path
-            break
-    
-    if not goals_file:
-        st.error(f"File 'quantifiable_goals.txt' not found. Please run `python goal_extractor.py` first to generate the goals file.")
-        st.info("Looking in: " + ", ".join([p for p in possible_paths if p]))
+    # Check Supabase connection
+    supabase = get_supabase_client()
+    if not supabase:
+        st.error("❌ Could not connect to Supabase. Please check your SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables.")
         return
     
     try:
+        organization_id = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e'
         
-        # Parse goals
-        groups = parse_goals_file(goals_file)
+        # Load groups from Supabase
+        groups = load_groups_from_supabase(organization_id)
         
         if not groups:
-            st.warning("No goals found in the file. Make sure to run goal_extractor.py first.")
+            st.warning("No goals found in Supabase. Run `python goal_extractor.py` to extract and save goals.")
             return
+        
+        st.sidebar.header("Filters")
+        
+        # Date filter - get unique dates from groups
+        unique_dates = sorted(set(g.get('session_date', 'Unknown') for g in groups if g.get('session_date') and g.get('session_date') != 'Unknown'))
+        
+        if unique_dates:
+            # Add "All Dates" option
+            date_options = ["All Dates"] + unique_dates
+            selected_date = st.sidebar.selectbox("📅 Filter by Session Date", date_options)
+            
+            # Filter groups by selected date
+            if selected_date != "All Dates":
+                groups = [g for g in groups if g.get('session_date') == selected_date]
         
         st.sidebar.header("Groups")
         
-        # Group selector
+        # Group selector - show only filtered groups
         group_names = [g['name'] for g in groups]
-        selected_group_name = st.sidebar.selectbox("Select a group", group_names)
+        selected_group_name = None
+        if not group_names:
+            st.sidebar.warning("No groups found for selected date filter.")
+        else:
+            selected_group_name = st.sidebar.selectbox("Select a group", group_names)
         
-        selected_group = next((g for g in groups if g['name'] == selected_group_name), None)
+        selected_group = None
+        if selected_group_name:
+            selected_group = next((g for g in groups if g['name'] == selected_group_name), None)
         
         if selected_group:
             st.markdown(f"### {selected_group['name']}")
@@ -294,15 +337,24 @@ def main():
         
         # Summary stats
         st.sidebar.divider()
-        total_groups = len(groups)
+        st.sidebar.header("Summary")
         
-        # Count participants and goals
+        # Get all groups (unfiltered) for total stats
+        all_groups = load_groups_from_supabase(organization_id)
+        
+        # Display stats for filtered groups
+        filtered_groups_count = len(groups)
+        total_groups = len(all_groups)
+        
+        # Count participants and goals for filtered groups
         total_participants = 0
         total_goals = 0
         quantifiable_count = 0
         
         for group in groups:
-            content = group['content']
+            content = group.get('content', '')
+            if not content:
+                continue
             # Count participants (lines starting with ###)
             participants = re.findall(r'^### (.+)$', content, re.MULTILINE)
             total_participants += len(participants)
@@ -316,15 +368,14 @@ def main():
                     quantifiable_count += 1
                 total_goals += 1
         
-        st.sidebar.metric("Groups", total_groups)
+        st.sidebar.metric("Groups (Filtered)", filtered_groups_count)
+        st.sidebar.metric("Total Groups (All)", total_groups)
         st.sidebar.metric("Participants", total_participants)
         if total_goals > 0:
             st.sidebar.metric("Total Goals", total_goals)
             st.sidebar.metric("✅ Quantifiable", quantifiable_count)
             st.sidebar.metric("❌ Not Quantifiable", total_goals - quantifiable_count)
         
-    except FileNotFoundError:
-        st.error(f"File '{goals_file}' not found. Please run `python goal_extractor.py` first to generate the goals file.")
     except Exception as e:
         st.error(f"Error loading goals: {e}")
         import traceback
