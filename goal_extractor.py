@@ -264,7 +264,7 @@ def _save_group_to_supabase(supabase: Client, group_data: Dict, organization_id:
     
     existing_session = supabase.schema('peer_progress').table('transcript_sessions').select('*').eq(
         'filename', session_filename
-    ).eq('group_name', group_name).execute()
+    ).eq('organization_id', organization_id).execute()
     
     if existing_session.data:
         session_id = existing_session.data[0]['id']
@@ -280,8 +280,10 @@ def _save_group_to_supabase(supabase: Client, group_data: Dict, organization_id:
         result = supabase.schema('peer_progress').table('transcript_sessions').insert(session_data).execute()
         if result.data:
             session_id = result.data[0]['id']
+            print(f"  ✓ Created session: {group_name} (ID: {session_id})")
         else:
             print(f"  ✗ Failed to create session: {group_name}")
+            print(f"     Error response: {result}")
             return 0
     
     # Save each participant's goal
@@ -346,13 +348,19 @@ def _save_group_to_supabase(supabase: Client, group_data: Dict, organization_id:
         
         if existing.data:
             goal_id = existing.data[0]['id']
-            supabase.schema('peer_progress').table('quantifiable_goals').update(goal_data).eq(
+            update_result = supabase.schema('peer_progress').table('quantifiable_goals').update(goal_data).eq(
                 'id', goal_id
             ).execute()
+            if update_result.data:
+                print(f"    ✓ Updated goal for {participant['name']}")
         else:
             result = supabase.schema('peer_progress').table('quantifiable_goals').insert(goal_data).execute()
             if result.data:
                 saved_count += 1
+                print(f"    ✓ Inserted goal for {participant['name']}: {goal_text_to_save[:50]}...")
+            else:
+                print(f"    ✗ Failed to insert goal for {participant['name']}")
+                print(f"       Response: {result}")
     
     return saved_count
 
@@ -485,10 +493,21 @@ def extract_goals_for_all_transcripts(folder_url=None, folder_key=None, days_bac
     print(f"\n📊 Total unique transcripts: {len(files)}\n")
     
     # Initialize Supabase client
-    supabase: Client = create_client(
-        os.getenv('SUPABASE_URL'),
-        os.getenv('SUPABASE_SERVICE_KEY')
-    )
+    supabase_url = os.getenv('SUPABASE_URL')
+    supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
+    
+    if not supabase_url or not supabase_key:
+        print("❌ Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment")
+        return
+    
+    try:
+        supabase: Client = create_client(supabase_url, supabase_key)
+        # Test connection
+        test_result = supabase.schema('peer_progress').table('transcript_sessions').select('id').limit(1).execute()
+        print("✓ Connected to Supabase")
+    except Exception as e:
+        print(f"❌ Failed to connect to Supabase: {e}")
+        return
     
     organization_id = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e'
     total_goals_saved = 0
@@ -530,13 +549,17 @@ def extract_goals_for_all_transcripts(folder_url=None, folder_key=None, days_bac
             # Parse the Gemini output to extract group and participants
             group_data = _parse_gemini_response(gemini_output, filename, session_date)
             
-            if group_data:
+            if group_data and group_data.get('participants'):
                 # Save to Supabase
                 saved_count = _save_group_to_supabase(supabase, group_data, organization_id, filename, session_date)
                 total_goals_saved += saved_count
                 print(f"  ✓ Saved {saved_count} goals to Supabase")
+                if saved_count == 0:
+                    print(f"     ⚠️  Warning: No goals were saved (might be duplicates or errors)")
             else:
                 print(f"  ⚠️  No participants found in response")
+                if group_data:
+                    print(f"     Participants in group_data: {len(group_data.get('participants', []))}")
             
         except Exception as e:
             print(f"  ✗ Error: {e}")
