@@ -242,8 +242,11 @@ def main():
         
         st.sidebar.header("Filters")
         
-        # Date filter - get unique dates from groups
-        unique_dates = sorted(set(g.get('session_date', 'Unknown') for g in groups if g.get('session_date') and g.get('session_date') != 'Unknown'))
+        # Date filter - get unique dates from groups, sorted with latest first
+        unique_dates = sorted(
+            set(g.get('session_date', 'Unknown') for g in groups if g.get('session_date') and g.get('session_date') != 'Unknown'),
+            reverse=True
+        )
         
         if unique_dates:
             # Add "All Dates" option
