@@ -36,7 +36,7 @@ class TranscriptProcessor:
         # Your existing prompts
         self.EXTRACT_COMMITMENTS = prompts.EXTRACT_COMMITMENTS
         self.CLASSIFY_COMMITMENTS = prompts.CLASSIFY_COMMITMENTS
-        self.EXTRACT_QUANTIFIABLE_GOALS = prompts.EXTRACT_QUANTIFIABLE_GOALS
+        self.GOAL_EXTRACTION = prompts.GOAL_EXTRACTION
         self.MARKETING_ACTIVITY_EXTRACTION = prompts.MARKETING_ACTIVITY_EXTRACTION
         self.PIPELINE_OUTCOME_EXTRACTION = prompts.PIPELINE_OUTCOME_EXTRACTION
         self.CHALLENGE_STRATEGY_EXTRACTION = prompts.CHALLENGE_STRATEGY_EXTRACTION
@@ -606,18 +606,21 @@ class TranscriptProcessor:
             return []
     
     def extract_quantifiable_goals_from_transcript(self, transcript_text: str, group_name: str, call_date: str = None) -> List[Dict]:
-        """Extract quantifiable goals using AI"""
+        """Extract quantifiable goals using AI with the detailed goal_extraction prompt"""
         try:
             # Skip Main Room transcripts - these are not actual mastermind sessions
             if group_name and ('Main Room' in group_name or group_name.startswith('Main Room')):
                 print(f"⚠️ Skipping goal extraction for Main Room session: {group_name}")
                 return []
             
-            prompt = self.EXTRACT_QUANTIFIABLE_GOALS.format(transcript=transcript_text)
+            # Use the detailed GOAL_EXTRACTION prompt from goal_extraction.md
+            prompt = self.GOAL_EXTRACTION.format(transcript=transcript_text)
             response = self.model.generate_content(prompt)
-            return self._parse_quantifiable_goals(response.text, group_name, call_date)
+            return self._parse_quantifiable_goals_from_detailed_format(response.text, group_name, call_date)
         except Exception as e:
             print(f"Error extracting quantifiable goals: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     def _parse_extracted_commitments(self, ai_response: str, group_name: str, call_date: str) -> List[Dict]:
@@ -754,6 +757,150 @@ class TranscriptProcessor:
                 'organization_id': self.organization_id,
                 'quantifiable_goals': current_quantifiable_goals,
                 'non_quantifiable_goals': current_non_quantifiable_goals
+            })
+        
+        return goals
+    
+    def _parse_quantifiable_goals_from_detailed_format(self, ai_response: str, group_name: str, call_date: str) -> List[Dict]:
+        """Parse AI response from detailed goal_extraction.md format - only extract quantifiable goals"""
+        goals = []
+        current_participant = None
+        current_quantifiable_goals = []
+        current_commitment_text = None
+        current_classification = None
+        current_exact_quote = None
+        
+        lines = ai_response.split('\n')
+        i = 0
+        
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            # New participant section
+            if line.startswith('### '):
+                # Save previous participant if they had quantifiable goals
+                if current_participant and current_quantifiable_goals:
+                    goals.append({
+                        'participant_name': current_participant,
+                        'group_name': group_name,
+                        'call_date': call_date or datetime.now().strftime('%Y-%m-%d'),
+                        'organization_id': self.organization_id,
+                        'quantifiable_goals': current_quantifiable_goals,
+                        'non_quantifiable_goals': []  # We only extract quantifiable in this format
+                    })
+                
+                current_participant = line.replace('### ', '').strip()
+                current_quantifiable_goals = []
+                current_commitment_text = None
+                current_classification = None
+                current_exact_quote = None
+                i += 1
+                continue
+            
+            # Extract "What They Discussed" (we don't use this for goals, but skip it)
+            elif line.startswith('**What They Discussed:**'):
+                i += 1
+                # Skip content until next section
+                while i < len(lines) and not lines[i].strip().startswith('**') and not lines[i].strip().startswith('###'):
+                    i += 1
+                continue
+            
+            # Extract "Their Commitment for Next Week"
+            elif line.startswith('**Their Commitment for Next Week:**'):
+                i += 1
+                commitment_lines = []
+                while i < len(lines) and not lines[i].strip().startswith('**') and not lines[i].strip().startswith('###') and lines[i].strip() != '---':
+                    if lines[i].strip():
+                        commitment_lines.append(lines[i].strip())
+                    i += 1
+                current_commitment_text = ' '.join(commitment_lines).strip()
+                continue
+            
+            # Extract Classification
+            elif line.startswith('**Classification:**'):
+                classification_text = line.replace('**Classification:**', '').strip()
+                # Handle variations: "Quantifiable", "Quantifiable / Not Quantifiable", etc.
+                if 'Quantifiable' in classification_text and 'Not' not in classification_text:
+                    current_classification = 'quantifiable'
+                else:
+                    current_classification = None
+                i += 1
+                continue
+            
+            # Extract Exact Quote
+            elif line.startswith('**Exact Quote:**'):
+                i += 1
+                quote_lines = []
+                while i < len(lines) and not lines[i].strip().startswith('**') and not lines[i].strip().startswith('###') and lines[i].strip() != '---':
+                    quote_text = lines[i].strip()
+                    # Remove surrounding quotes if present
+                    if quote_text.startswith('"') and quote_text.endswith('"'):
+                        quote_text = quote_text[1:-1]
+                    if quote_text:
+                        quote_lines.append(quote_text)
+                    i += 1
+                current_exact_quote = ' '.join(quote_lines).strip() if quote_lines else None
+                continue
+            
+            # When we see "---" or move to next participant, process what we've collected
+            elif line == '---' or (i < len(lines) - 1 and lines[i+1].strip().startswith('###')):
+                # If we have a quantifiable goal, add it
+                if current_participant and current_classification == 'quantifiable' and current_commitment_text:
+                    # Use exact quote if available, otherwise use commitment text
+                    goal_text = current_exact_quote or current_commitment_text
+                    
+                    # Skip if it's "No specific commitment made" or similar
+                    if goal_text and goal_text.lower() not in ['no specific commitment made', 'n/a', 'none', '']:
+                        # Extract number from goal text
+                        number_match = re.search(r'(\d+(?:\.\d+)?)', goal_text)
+                        if number_match:
+                            target_number = float(number_match.group(1))
+                        else:
+                            # If it's quantifiable but no number, default to 1.0
+                            target_number = 1.0
+                        
+                        # Try to determine goal unit from text
+                        goal_unit = 'units'
+                        goal_lower = goal_text.lower()
+                        if any(word in goal_lower for word in ['call', 'calls']):
+                            goal_unit = 'calls'
+                        elif any(word in goal_lower for word in ['post', 'posts']):
+                            goal_unit = 'posts'
+                        elif any(word in goal_lower for word in ['email', 'emails']):
+                            goal_unit = 'emails'
+                        elif any(word in goal_lower for word in ['message', 'messages', 'dm', 'dms']):
+                            goal_unit = 'messages'
+                        elif any(word in goal_lower for word in ['meeting', 'meetings']):
+                            goal_unit = 'meetings'
+                        elif any(word in goal_lower for word in ['client', 'clients']):
+                            goal_unit = 'clients'
+                        
+                        current_quantifiable_goals.append({
+                            'goal_text': goal_text,
+                            'target_number': target_number,
+                            'goal_unit': goal_unit,
+                            'exact_quote': current_exact_quote,
+                            'commitment_text': current_commitment_text
+                        })
+                
+                # Reset for next section
+                current_commitment_text = None
+                current_classification = None
+                current_exact_quote = None
+                i += 1
+                continue
+            
+            i += 1
+        
+        # Handle the last participant
+        if current_participant and current_quantifiable_goals:
+            goals.append({
+                'participant_name': current_participant,
+                'group_name': group_name,
+                'call_date': call_date or datetime.now().strftime('%Y-%m-%d'),
+                'organization_id': self.organization_id,
+                'quantifiable_goals': current_quantifiable_goals,
+                'non_quantifiable_goals': []
             })
         
         return goals

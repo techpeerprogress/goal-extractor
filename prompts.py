@@ -60,54 +60,6 @@ Extracted Commitments:
 {commitments}
 """
 
-EXTRACT_QUANTIFIABLE_GOALS = """
-# Extract Goals (Quantifiable and Non-Quantifiable)
-
-**Task:** Find ALL goals/commitments that participants commit to, then classify them as quantifiable or not.
-
-**Output Format:**
-### [Participant Name]
-**Quantifiable Goals:**
-[Goal 1: "I will make 5 sales calls this week"]
-[Goal 2: "Post 3 times on LinkedIn"]
-[If none: "No quantifiable goals mentioned"]
-
-**Non-Quantifiable Goals:**
-[Goal 1: "I plan to do outreach"]
-[Goal 2: "I want to network more"]
-[Goal 3: "Plan to play basketball"]
-[If none: "No non-quantifiable goals mentioned"]
----
-
-**Rules:**
-- **Quantifiable**: Has specific numbers, deadlines, or measurable outcomes (e.g., "make 5 calls", "post 3 times", "jog 10km")
-- **Non-Quantifiable**: Vague goals without specific metrics or numbers (e.g., "plan to do outreach", "want to network more", "plan to play basketball", "plan to jog" without distance)
-- **MUST INCLUDE**: All goals that participants commit to, even if not quantifiable - mark them as "Non-Quantifiable Goals"
-- **MUST EXCLUDE**: 
-  - Attendance information (who attended/didn't attend meetings)
-  - Scheduling information (meeting times, availability)
-  - Personal life circumstances not related to commitments
-  - Information that's purely observational or informational
-- When in doubt about whether something is a goal vs. information, ask: "Did the person commit to DOING this?" If yes, include it (as quantifiable or non-quantifiable). If no, exclude it.
-
-**Examples of Non-Quantifiable Goals to INCLUDE:**
-- "I plan to do outreach" ✓
-- "I want to network more" ✓
-- "Plan to play basketball" ✓
-- "Plan to jog 10km" → Quantifiable (has specific distance)
-- "Plan to jog" → Non-quantifiable (no specific distance mentioned)
-
-**Examples to EXCLUDE:**
-- "John attended the meeting" ✗ (attendance info)
-- "The meeting was scheduled for 3pm" ✗ (scheduling info)
-- "Mary mentioned she's traveling next week" ✗ (personal circumstance, not a commitment)
-- Main Room sessions ✗ (if this transcript is from a Main Room, exclude all goals)
-
-**IMPORTANT:** This prompt should NOT be used for "Main Room" transcripts. Main Room sessions are informational and should not have goals extracted.
-
-Transcript:
-{transcript}
-"""
 
 MARKETING_ACTIVITY_EXTRACTION = """
 Extract marketing activities by participant and classify them.
@@ -360,6 +312,32 @@ SENTIMENT_ANALYSIS = """
 **Confidence Score:** 0.82
 **Negative Participants:**
 - Mack Earnhardt: stuck, low energy - "I have felt completely stuck for the last two weeks"
+
+Transcript:
+{transcript}
+"""
+
+# Load prompts from markdown files if available
+import os
+
+_prompts_dir = os.path.join(os.path.dirname(__file__), 'prompts')
+
+def _load_prompt_from_file(filename: str) -> str:
+    """Load a prompt from a markdown file"""
+    filepath = os.path.join(_prompts_dir, filename)
+    if os.path.exists(filepath):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return f.read()
+    return None
+
+# Try to load GOAL_EXTRACTION from markdown file
+_goal_extraction_content = _load_prompt_from_file('goal_extraction.md')
+if _goal_extraction_content:
+    # The markdown file should be ready to use with {transcript} placeholder
+    GOAL_EXTRACTION = _goal_extraction_content.replace('[Transcript goes here]', '{transcript}')
+else:
+    # Fallback: create a basic prompt if file not found
+    GOAL_EXTRACTION = """Extract quantifiable goals from the transcript. Use the format specified in goal_extraction.md.
 
 Transcript:
 {transcript}
