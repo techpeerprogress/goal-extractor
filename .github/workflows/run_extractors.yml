@@ -1,0 +1,35 @@
+name: Run Extractors
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # hourly
+  workflow_dispatch: {}
+
+jobs:
+  run-all:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install streamlit supabase python-dotenv google-generativeai google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2
+
+      - name: Run unified extractor
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          GOOGLE_DRIVE_FOLDER_URL: ${{ secrets.GOOGLE_DRIVE_FOLDER_URL }}
+        run: |
+          python run_all_extractors.py --folder_key october_2025 --recursive
+
+
