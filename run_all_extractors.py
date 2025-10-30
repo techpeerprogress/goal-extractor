@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 
 # Import extractors
 from goal_extractor import extract_goals_for_all_transcripts
-from marketing_extractor import extract_and_save_marketing_data
+from marketing_extractor import extract_marketing
 from stuck_extractor import extract_stuck
 from challenges_extractor import extract_challenges
 
@@ -54,10 +54,10 @@ def main() -> None:
 
     print('\n=== 2) Marketing Activity & Pipeline Outcomes ===')
     try:
-        extract_and_save_marketing_data(
-            folder_key=folder_key,
-            folder_url=folder_url,
-            multiple_folders=multiple_folders,
+        # marketing_extractor accepts folder_url; if multiple folders/keys provided, prefer folder_url env
+        target_folder = folder_url or os.getenv('GOOGLE_DRIVE_FOLDER_URL')
+        extract_marketing(
+            folder_url=target_folder,
             days_back=days_back,
             recursive=recursive,
         )
