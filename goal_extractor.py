@@ -40,18 +40,18 @@ PROMPT = _load_goal_extraction_prompt()
 
 # --- Helpers to populate new tables ---
 def _ensure_group(sb: Client, group_code: str) -> str:
-    res = sb.schema('peer_progress').table('groups').select('group_id').eq('group_code', group_code).execute()
+    res = sb.schema('peer_progress').table('groups').select('id').eq('group_code', group_code).execute()
     if res.data:
-        return res.data[0]['group_id']
+        return res.data[0]['id']
     ins = sb.schema('peer_progress').table('groups').insert({'group_code': group_code}).execute()
-    return ins.data[0]['group_id'] if ins.data else None
+    return ins.data[0]['id'] if ins.data else None
 
 def _ensure_member(sb: Client, full_name: str, group_code: str) -> str:
-    res = sb.schema('peer_progress').table('members').select('member_id').eq('full_name', full_name).eq('group_code', group_code).execute()
+    res = sb.schema('peer_progress').table('members').select('id').eq('full_name', full_name).eq('group_code', group_code).execute()
     if res.data:
-        return res.data[0]['member_id']
+        return res.data[0]['id']
     ins = sb.schema('peer_progress').table('members').insert({'full_name': full_name, 'status': 'active', 'group_code': group_code}).execute()
-    return ins.data[0]['member_id'] if ins.data else None
+    return ins.data[0]['id'] if ins.data else None
 
 def _record_attendance(sb: Client, member_id: str, group_id: str, session_date: str) -> None:
     try:
