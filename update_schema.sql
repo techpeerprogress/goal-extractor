@@ -52,3 +52,81 @@ ADD COLUMN IF NOT EXISTS challenges_strategies_json JSONB;
 -- Helpful index to avoid duplicate lookups being slow
 CREATE INDEX IF NOT EXISTS idx_quant_goals_session_participant
 ON peer_progress.quantifiable_goals (transcript_session_id, participant_name);
+
+-- === MEMBERS TABLE ===
+CREATE TABLE IF NOT EXISTS peer_progress.members (
+    member_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    full_name TEXT NOT NULL,
+    status TEXT NOT NULL, -- active, renewed, paused, dropped_requested, dropped_ghosting, not_renewed
+    risk_tier TEXT, -- high, medium, on_track, crushing - computed
+    group_code TEXT,
+    renewal_date DATE,
+    niche TEXT,
+    marketing_types JSONB,
+    first_client_date DATE,
+    current_week_goal TEXT,
+    join_date DATE DEFAULT now()
+);
+
+-- === GROUPS TABLE ===
+CREATE TABLE IF NOT EXISTS peer_progress.groups (
+    group_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_code TEXT UNIQUE NOT NULL,
+    call_day TEXT, -- e.g., 'Wednesday', for custom week window
+    call_time TIME,
+    timezone TEXT
+);
+
+-- === ATTENDANCE TABLE ===
+CREATE TABLE IF NOT EXISTS peer_progress.attendance (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id UUID REFERENCES peer_progress.members(member_id),
+    group_id UUID REFERENCES peer_progress.groups(group_id),
+    date DATE NOT NULL,
+    status TEXT NOT NULL, -- present, absent, unknown, excused
+    reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_attendance_member ON peer_progress.attendance (member_id, date);
+
+-- === GOAL EVENTS TABLE ===
+CREATE TABLE IF NOT EXISTS peer_progress.goal_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id UUID REFERENCES peer_progress.members(member_id),
+    group_id UUID REFERENCES peer_progress.groups(group_id),
+    event_type TEXT NOT NULL, -- goal_set, goal_update, goal_completed
+    goal_text TEXT,
+    is_quantifiable BOOLEAN,
+    ts TIMESTAMPTZ DEFAULT now(),
+    source TEXT NOT NULL,
+    extra JSONB
+);
+CREATE INDEX IF NOT EXISTS idx_goal_events_member ON peer_progress.goal_events (member_id, ts);
+
+-- === ACTIVITY TABLE ===
+CREATE TABLE IF NOT EXISTS peer_progress.activity (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id UUID REFERENCES peer_progress.members(member_id),
+    group_id UUID REFERENCES peer_progress.groups(group_id),
+    subtype TEXT NOT NULL, -- meeting_booked, proposal_sent, client_closed, goal_set, goal_update, goal_completed, attendance, marketing_touch
+    count INTEGER,
+    channel TEXT, -- linkedin, network_activation, cold_outreach
+    ts TIMESTAMPTZ DEFAULT now(),
+    source TEXT, -- slack, transcript, manual
+    note TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_activity_member ON peer_progress.activity (member_id, ts);
+
+-- === COACHING & CONTEXT TABLE ===
+CREATE TABLE IF NOT EXISTS peer_progress.coaching_and_context (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id UUID REFERENCES peer_progress.members(member_id),
+    ts TIMESTAMPTZ DEFAULT now(),
+    source TEXT,
+    summary TEXT,
+    tags JSONB,
+    verbatim_quote TEXT,
+    next_steps TEXT,
+    link_ref TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_coaching_member ON peer_progress.coaching_and_context (member_id, ts);

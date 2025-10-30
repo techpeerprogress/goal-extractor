@@ -79,7 +79,7 @@ def fetch_analysis(org_id: str, date: str) -> List[Dict]:
 def main():
     st.set_page_config(page_title='Marketing Activity', page_icon='📈', layout='wide')
     st.title('📈 Marketing Activity & Pipeline Outcomes')
-    st.caption('Extracted from transcripts via Gemini; filter by session date.')
+    st.caption('Extracted from transcripts via AI; filter by session date.')
     st.divider()
 
     org_id = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e'

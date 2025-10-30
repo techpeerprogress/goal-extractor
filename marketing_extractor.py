@@ -17,6 +17,7 @@ from ai_llm_fallback import ai_generate_content
 
 from main import TranscriptProcessor
 from goal_extractor import _get_files_recursively  # reuse folder crawl
+from goal_extractor import _ensure_group as _ensure_group_ref, _ensure_member as _ensure_member_ref
 
 
 load_dotenv()
@@ -102,6 +103,73 @@ def _save_analysis(supabase: Client, session_id: str, org_id: str, activities: L
         supabase.schema('peer_progress').table('transcript_analysis').insert(payload).execute()
 
 
+def _record_activity_rows(sb: Client, group_code: str, session_date: str, activities: List[Dict], outcomes: List[Dict]) -> None:
+    """Persist activity table rows based on parsed marketing activities and pipeline outcomes."""
+    group_id = _ensure_group_ref(sb, group_code)
+    # Activities: per participant
+    for a in activities or []:
+        name = a.get('name') or 'Unknown'
+        member_id = _ensure_member_ref(sb, name, group_code)
+        if not member_id or not group_id:
+            continue
+        if a.get('none'):
+            continue
+        # Map categories to channel marketing_touch
+        if a.get('network_activation'):
+            sb.schema('peer_progress').table('activity_events').insert({
+                'member_id': member_id,
+                'group_id': group_id,
+                'subtype': 'marketing_touch',
+                'count': 1,
+                'channel': 'network_activation',
+                'ts': session_date + 'T00:00:00Z' if session_date else None,
+                'source': 'transcript',
+                'note': a['network_activation'][:250]
+            }).execute()
+        if a.get('linkedin'):
+            sb.schema('peer_progress').table('activity_events').insert({
+                'member_id': member_id,
+                'group_id': group_id,
+                'subtype': 'marketing_touch',
+                'count': 1,
+                'channel': 'linkedin',
+                'ts': session_date + 'T00:00:00Z' if session_date else None,
+                'source': 'transcript',
+                'note': a['linkedin'][:250]
+            }).execute()
+        if a.get('cold_outreach'):
+            sb.schema('peer_progress').table('activity_events').insert({
+                'member_id': member_id,
+                'group_id': group_id,
+                'subtype': 'marketing_touch',
+                'count': 1,
+                'channel': 'cold_outreach',
+                'ts': session_date + 'T00:00:00Z' if session_date else None,
+                'source': 'transcript',
+                'note': a['cold_outreach'][:250]
+            }).execute()
+    # Outcomes: meetings, proposals, clients (counts)
+    for o in outcomes or []:
+        name = o.get('name') or 'Unknown'
+        member_id = _ensure_member_ref(sb, name, group_code)
+        if not member_id or not group_id:
+            continue
+        def _ins(subtype: str, count_val: int):
+            if count_val and count_val > 0:
+                sb.schema('peer_progress').table('activity_events').insert({
+                    'member_id': member_id,
+                    'group_id': group_id,
+                    'subtype': subtype,
+                    'count': int(count_val),
+                    'ts': session_date + 'T00:00:00Z' if session_date else None,
+                    'source': 'transcript',
+                    'note': (o.get('notes') or '')[:250]
+                }).execute()
+        _ins('meeting_booked', int(o.get('meetings', 0)))
+        _ins('proposal_sent', int(o.get('proposals', 0)))
+        _ins('client_closed', int(o.get('clients', 0)))
+
+
 def extract_marketing(organization_id: str = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e',
                       folder_url: Optional[str] = None,
                       days_back: Optional[int] = None,
@@ -143,6 +211,9 @@ def extract_marketing(organization_id: str = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f
             outcomes = _parse_multi_blocks(out_text, _parse_outcome_block)
 
             _save_analysis(supabase, session_id, organization_id, activities, outcomes)
+            # Also persist normalized activity rows for KPIs
+            session_date_str = session_date or None
+            _record_activity_rows(supabase, name, session_date_str, activities, outcomes)
             print(f"  ✓ Saved analysis for session {session_id}")
         except Exception as e:
             print(f"  ✗ Error: {e}")

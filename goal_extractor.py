@@ -38,6 +38,47 @@ def _load_goal_extraction_prompt():
 
 PROMPT = _load_goal_extraction_prompt()
 
+# --- Helpers to populate new tables ---
+def _ensure_group(sb: Client, group_code: str) -> str:
+    res = sb.schema('peer_progress').table('groups').select('group_id').eq('group_code', group_code).execute()
+    if res.data:
+        return res.data[0]['group_id']
+    ins = sb.schema('peer_progress').table('groups').insert({'group_code': group_code}).execute()
+    return ins.data[0]['group_id'] if ins.data else None
+
+def _ensure_member(sb: Client, full_name: str, group_code: str) -> str:
+    res = sb.schema('peer_progress').table('members').select('member_id').eq('full_name', full_name).eq('group_code', group_code).execute()
+    if res.data:
+        return res.data[0]['member_id']
+    ins = sb.schema('peer_progress').table('members').insert({'full_name': full_name, 'status': 'active', 'group_code': group_code}).execute()
+    return ins.data[0]['member_id'] if ins.data else None
+
+def _record_attendance(sb: Client, member_id: str, group_id: str, session_date: str) -> None:
+    try:
+        sb.schema('peer_progress').table('attendance').insert({
+            'member_id': member_id,
+            'group_id': group_id,
+            'date': session_date,
+            'status': 'present',
+            'reason': None,
+        }).execute()
+    except Exception:
+        pass
+
+def _record_goal_event(sb: Client, member_id: str, group_id: str, goal_text: str, is_quantifiable: bool, ts_iso: str) -> None:
+    try:
+        sb.schema('peer_progress').table('goal_events').insert({
+            'member_id': member_id,
+            'group_id': group_id,
+            'event_type': 'goal_set',
+            'goal_text': goal_text,
+            'is_quantifiable': is_quantifiable,
+            'ts': ts_iso + 'T00:00:00Z' if len(ts_iso) == 10 else ts_iso,
+            'source': 'transcript',
+        }).execute()
+    except Exception:
+        pass
+
 def _parse_gemini_response(response_text: str, filename: str, session_date: str) -> Optional[Dict]:
     """Parse Gemini response to extract group and participant data"""
     group_name = filename
@@ -553,12 +594,23 @@ def extract_goals_for_all_transcripts(folder_url=None, folder_key=None, days_bac
             # Extract goals with LLM (Gemini preferred, fallback to ChatGPT)
             gemini_output = ai_generate_content(PROMPT.format(transcript=content))
             
-            # Parse the Gemini output to extract group and participants
+            # Parse the LLM output to extract group and participants
             group_data = _parse_gemini_response(gemini_output, filename, session_date)
             
             if group_data and group_data.get('participants'):
                 # Save to Supabase
                 saved_count = _save_group_to_supabase(supabase, group_data, organization_id, filename, session_date)
+                # Also populate attendance and goal_events for members present
+                group_code = filename
+                group_id = _ensure_group(supabase, group_code)
+                for p in group_data['participants']:
+                    member_id = _ensure_member(supabase, p['name'], group_code)
+                    if member_id and group_id:
+                        if session_date and session_date != 'Unknown':
+                            _record_attendance(supabase, member_id, group_id, session_date)
+                        goal_txt = p.get('commitment') or p.get('discussion') or ''
+                        if goal_txt:
+                            _record_goal_event(supabase, member_id, group_id, goal_txt, (p.get('classification') == 'quantifiable'), session_date or datetime.utcnow().date().isoformat())
                 total_goals_saved += saved_count
                 print(f"  ✓ Saved {saved_count} goals to Supabase")
                 if saved_count == 0:

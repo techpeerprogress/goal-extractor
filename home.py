@@ -55,7 +55,7 @@ def main():
     st.markdown("\n")
 
     # Row 2
-    c4, c5, _ = st.columns(3)
+    c4, c5, c6 = st.columns(3)
     with c4:
         card(
             label="Stuck / Support Needed",
@@ -71,6 +71,26 @@ def main():
             link_label="Challenges & Strategies",
             page_path="pages/05_🧠_Challenges_Strategies.py",
             emoji="🧠",
+        )
+    with c6:
+        card(
+            label="Member Risk Analysis",
+            description="Attendance & goal achievement risk tiers with drilldowns.",
+            link_label="Member Risk Analysis",
+            page_path="pages/06_⚠️_Member_Risk.py",
+            emoji="⚠️",
+        )
+
+    st.markdown("\n")
+    # Row 3 (Pipeline)
+    p1, _, _ = st.columns(3)
+    with p1:
+        card(
+            label="Pipeline",
+            description="Closed Clients, Proposals, Meetings within strict 3‑week window.",
+            link_label="Pipeline",
+            page_path="pages/07_📊_Pipeline.py",
+            emoji="📊",
         )
 
 
