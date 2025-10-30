@@ -9,11 +9,11 @@ from typing import List, Dict
 from datetime import datetime
 
 from dotenv import load_dotenv
-import google.generativeai as genai
 from supabase import create_client, Client
 
 from main import TranscriptProcessor
 from goal_extractor import _get_files_recursively
+from ai_llm_fallback import ai_generate_content
 
 
 load_dotenv()
@@ -88,8 +88,6 @@ def extract_stuck(organization_id: str = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e',
                   folder_url: str | None = None,
                   days_back: int | None = None,
                   recursive: bool = True) -> None:
-    genai.configure(api_key=os.getenv('GOOGLE_AI_API_KEY'))
-    model = genai.GenerativeModel('gemini-2.5-pro')
 
     supabase = create_client(os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_SERVICE_KEY'))
     processor = TranscriptProcessor(organization_id=organization_id)
@@ -117,7 +115,7 @@ def extract_stuck(organization_id: str = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e',
                 print('  ✗ could not create/find session')
                 continue
 
-            stuck_text = model.generate_content(PROMPT_STUCK.format(transcript=content)).text
+            stuck_text = ai_generate_content(PROMPT_STUCK.format(transcript=content))
             stuck_items = _parse_stuck_blocks(stuck_text)
             _save_stuck(supabase, session_rec['id'], organization_id, stuck_items)
             print(f'  ✓ Saved {len(stuck_items)} stuck signals')

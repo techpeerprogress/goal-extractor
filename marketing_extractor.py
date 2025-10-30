@@ -12,8 +12,8 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 from dotenv import load_dotenv
-import google.generativeai as genai
 from supabase import create_client, Client
+from ai_llm_fallback import ai_generate_content
 
 from main import TranscriptProcessor
 from goal_extractor import _get_files_recursively  # reuse folder crawl
@@ -106,8 +106,6 @@ def extract_marketing(organization_id: str = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f
                       folder_url: Optional[str] = None,
                       days_back: Optional[int] = None,
                       recursive: bool = True) -> None:
-    genai.configure(api_key=os.getenv('GOOGLE_AI_API_KEY'))
-    model = genai.GenerativeModel('gemini-2.5-pro')
 
     supabase = create_client(os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_SERVICE_KEY'))
     processor = TranscriptProcessor(organization_id=organization_id)
@@ -136,12 +134,12 @@ def extract_marketing(organization_id: str = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f
                 print('  ✗ could not create/find session')
                 continue
 
-            # Run Gemini for activities
-            act_text = model.generate_content(PROMPT_ACTIVITY.format(transcript=content)).text
+            # Use LLM (Gemini or ChatGPT) for activities
+            act_text = ai_generate_content(PROMPT_ACTIVITY.format(transcript=content))
             activities = _parse_multi_blocks(act_text, _parse_activity_block)
 
-            # Run Gemini for outcomes
-            out_text = model.generate_content(PROMPT_OUTCOMES.format(transcript=content)).text
+            # Use LLM for outcomes
+            out_text = ai_generate_content(PROMPT_OUTCOMES.format(transcript=content))
             outcomes = _parse_multi_blocks(out_text, _parse_outcome_block)
 
             _save_analysis(supabase, session_id, organization_id, activities, outcomes)

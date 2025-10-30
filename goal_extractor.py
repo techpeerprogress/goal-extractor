@@ -8,7 +8,7 @@ import re
 from dotenv import load_dotenv
 from datetime import datetime
 from typing import List, Dict, Optional
-import google.generativeai as genai
+from ai_llm_fallback import ai_generate_content
 from main import TranscriptProcessor
 from supabase import create_client, Client
 
@@ -437,10 +437,6 @@ def extract_goals_for_all_transcripts(folder_url=None, folder_key=None, days_bac
         recursive: If True, search subfolders recursively (default: True)
     """
     
-    # Setup Gemini
-    genai.configure(api_key=os.getenv('GOOGLE_AI_API_KEY'))
-    model = genai.GenerativeModel('gemini-2.5-pro')
-    
     # Use existing processor for Google Drive access
     processor = TranscriptProcessor(organization_id='f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e')
     
@@ -542,9 +538,8 @@ def extract_goals_for_all_transcripts(folder_url=None, folder_key=None, days_bac
             else:
                 session_date = group_info.get('session_date', 'Unknown')
             
-            # Extract goals with Gemini
-            response = model.generate_content(PROMPT.format(transcript=content))
-            gemini_output = response.text
+            # Extract goals with LLM (Gemini preferred, fallback to ChatGPT)
+            gemini_output = ai_generate_content(PROMPT.format(transcript=content))
             
             # Parse the Gemini output to extract group and participants
             group_data = _parse_gemini_response(gemini_output, filename, session_date)

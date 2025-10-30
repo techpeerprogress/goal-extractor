@@ -6,7 +6,7 @@ from typing import List, Dict
 from datetime import datetime
 
 from dotenv import load_dotenv
-import google.generativeai as genai
+from ai_llm_fallback import ai_generate_content
 from supabase import create_client, Client
 
 from main import TranscriptProcessor
@@ -83,8 +83,6 @@ def extract_challenges(folder_url: str | None = None,
                        organization_id: str = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e',
                        days_back: int | None = None,
                        recursive: bool = True) -> None:
-    genai.configure(api_key=os.getenv('GOOGLE_AI_API_KEY'))
-    model = genai.GenerativeModel('gemini-2.5-pro')
     sb = create_client(os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_SERVICE_KEY'))
     processor = TranscriptProcessor(organization_id=organization_id)
 
@@ -111,8 +109,8 @@ def extract_challenges(folder_url: str | None = None,
                 print('  ✗ could not create/find session')
                 continue
 
-            resp = model.generate_content(PROMPT.format(transcript=content))
-            items = _parse_response(resp.text)
+            resp = ai_generate_content(PROMPT.format(transcript=content))
+            items = _parse_response(resp)
             _save(sb, session_rec['id'], organization_id, items)
             print(f'  ✓ Saved {len(items)} items')
         except Exception as e:
