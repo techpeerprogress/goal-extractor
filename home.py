@@ -1,5 +1,4 @@
 import streamlit as st
-import os
 
 
 def card(label: str, description: str, link_label: str, page_path: str, emoji: str = "🎯"):
@@ -26,9 +25,9 @@ def main():
     st.caption("Quick access to tools and dashboards")
     st.divider()
 
-    col1, col2 = st.columns(2)
-
-    with col1:
+    # Row 1
+    c1, c2, c3 = st.columns(3)
+    with c1:
         card(
             label="Goal Extractor Dashboard",
             description="View quantifiable and non-quantifiable goals extracted from mastermind transcripts.",
@@ -36,17 +35,42 @@ def main():
             page_path="pages/01_🎯_Goal_Extractor_Dashboard.py",
             emoji="🎯",
         )
+    with c2:
+        card(
+            label="Vague Goals",
+            description="See who has vague goals (or no goal) and why, by session date.",
+            link_label="Vague Goals",
+            page_path="pages/02_📝_Vague_Goals.py",
+            emoji="📝",
+        )
+    with c3:
+        card(
+            label="Marketing Activity",
+            description="Track marketing activities and pipeline outcomes per participant.",
+            link_label="Marketing Activity",
+            page_path="pages/03_📈_Marketing_Activity.py",
+            emoji="📈",
+        )
 
-    # Placeholder for future cards
-    with col2:
-        st.markdown(
-            """
-            <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:16px;background:#ffffff05;">
-                <div style="font-size:1.1rem;font-weight:600;">Coming soon</div>
-                <div style="color:#9aa2af;margin:6px 0 12px 0;">Additional dashboards and tools will appear here.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    st.markdown("\n")
+
+    # Row 2
+    c4, c5, _ = st.columns(3)
+    with c4:
+        card(
+            label="Stuck / Support Needed",
+            description="Identify participants who are stuck and need support, with quotes and timestamps.",
+            link_label="Stuck / Support Needed",
+            page_path="pages/04_🆘_Stuck_Signals.py",
+            emoji="🆘",
+        )
+    with c5:
+        card(
+            label="Challenges & Strategies",
+            description="Per participant challenges, category, and actionable tips shared.",
+            link_label="Challenges & Strategies",
+            page_path="pages/05_🧠_Challenges_Strategies.py",
+            emoji="🧠",
         )
 
 

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.peerprogress.extractors</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd /Users/nick.mwangemi/Dev/goal-extractor && scripts/run_all_extractors.sh --folder_key october_2025 --recursive</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- Ensure your .env covers these; launchd inherits minimal env -->
+    <key>SUPABASE_URL</key>
+    <string>$(SUPABASE_URL)</string>
+    <key>SUPABASE_SERVICE_KEY</key>
+    <string>$(SUPABASE_SERVICE_KEY)</string>
+    <key>GOOGLE_AI_API_KEY</key>
+    <string>$(GOOGLE_AI_API_KEY)</string>
+    <key>GOOGLE_DRIVE_FOLDER_URL</key>
+    <string>$(GOOGLE_DRIVE_FOLDER_URL)</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/nick.mwangemi/Library/Logs/peerprogress.extractors.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/nick.mwangemi/Library/Logs/peerprogress.extractors.err</string>
+
+  <!-- Run every 60 minutes -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
+
+

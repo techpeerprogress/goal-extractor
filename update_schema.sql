@@ -33,3 +33,18 @@ FROM information_schema.columns
 WHERE table_schema = 'peer_progress' 
 AND table_name = 'quantifiable_goals' 
 ORDER BY ordinal_position;
+
+-- Add columns for marketing activity & pipeline outcomes on transcript_analysis
+ALTER TABLE peer_progress.transcript_analysis
+ADD COLUMN IF NOT EXISTS marketing_activities_json JSONB;
+
+ALTER TABLE peer_progress.transcript_analysis
+ADD COLUMN IF NOT EXISTS pipeline_outcomes_json JSONB;
+
+-- Add column for stuck/frustrated signals extraction
+ALTER TABLE peer_progress.transcript_analysis
+ADD COLUMN IF NOT EXISTS stuck_signals_json JSONB;
+
+-- Add column for challenges & strategies extraction
+ALTER TABLE peer_progress.transcript_analysis
+ADD COLUMN IF NOT EXISTS challenges_strategies_json JSONB;
