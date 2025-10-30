@@ -7,7 +7,7 @@ import os
 import re
 from dotenv import load_dotenv
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 from ai_llm_fallback import ai_generate_content
 from main import TranscriptProcessor
 from supabase import create_client, Client
@@ -287,6 +287,12 @@ def _save_group_to_supabase(supabase: Client, group_data: Dict, organization_id:
             return 0
     
     # Save each participant's goal
+    def _normalize(text: Optional[str]) -> str:
+        if not text:
+            return ''
+        # collapse whitespace and lowercase for duplicate detection
+        import re as _re
+        return _re.sub(r"\s+", " ", text.strip()).lower()
     saved_count = 0
     for participant in group_data['participants']:
         commitment_text = participant.get('commitment')
@@ -341,19 +347,25 @@ def _save_group_to_supabase(supabase: Client, group_data: Dict, organization_id:
             'member_id': None,
         }
         
-        # Check if goal already exists
-        existing = supabase.schema('peer_progress').table('quantifiable_goals').select('*').eq(
+        # Check if a duplicate goal already exists (normalized comparison)
+        existing = supabase.schema('peer_progress').table('quantifiable_goals').select('id, goal_text').eq(
             'transcript_session_id', session_id
-        ).eq('participant_name', participant['name']).eq('goal_text', goal_text_to_save).execute()
-        
+        ).eq('participant_name', participant['name']).execute()
+
+        is_dup = False
+        norm_new = _normalize(goal_text_to_save)
         if existing.data:
-            goal_id = existing.data[0]['id']
-            update_result = supabase.schema('peer_progress').table('quantifiable_goals').update(goal_data).eq(
-                'id', goal_id
-            ).execute()
-            if update_result.data:
-                print(f"    ✓ Updated goal for {participant['name']}")
-        else:
+            for row in existing.data:
+                if _normalize(row.get('goal_text')) == norm_new:
+                    is_dup = True
+                    goal_id = row['id']
+                    # Update existing instead of inserting duplicate
+                    update_result = supabase.schema('peer_progress').table('quantifiable_goals').update(goal_data).eq('id', goal_id).execute()
+                    if update_result.data:
+                        print(f"    ✓ Updated existing goal for {participant['name']}")
+                    break
+
+        if not is_dup:
             result = supabase.schema('peer_progress').table('quantifiable_goals').insert(goal_data).execute()
             if result.data:
                 saved_count += 1

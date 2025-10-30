@@ -48,3 +48,7 @@ ADD COLUMN IF NOT EXISTS stuck_signals_json JSONB;
 -- Add column for challenges & strategies extraction
 ALTER TABLE peer_progress.transcript_analysis
 ADD COLUMN IF NOT EXISTS challenges_strategies_json JSONB;
+
+-- Helpful index to avoid duplicate lookups being slow
+CREATE INDEX IF NOT EXISTS idx_quant_goals_session_participant
+ON peer_progress.quantifiable_goals (transcript_session_id, participant_name);
