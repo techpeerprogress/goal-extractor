@@ -22,38 +22,86 @@ def get_supabase_client() -> Client:
     
     return create_client(supabase_url, supabase_key)
 
-def load_groups_from_supabase(organization_id: str = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e') -> List[Dict]:
-    """Load groups and goals from Supabase"""
+
+@st.cache_data(show_spinner=False, ttl=120)
+def fetch_session_dates(organization_id: str) -> List[str]:
+    """Fetch distinct session dates (sorted desc) for quick date filter population."""
+    supabase = get_supabase_client()
+    if not supabase:
+        return []
+    try:
+        res = (
+            supabase
+            .schema('peer_progress')
+            .table('transcript_sessions')
+            .select('session_date')
+            .eq('organization_id', organization_id)
+            .not_.is_('session_date', 'null')  # exclude nulls
+            .order('session_date', desc=True)
+            .execute()
+        )
+        dates = [r['session_date'] for r in (res.data or []) if r.get('session_date')]
+        # remove duplicates while preserving order
+        seen = set()
+        unique_desc = []
+        for d in dates:
+            if d not in seen:
+                seen.add(d)
+                unique_desc.append(d)
+        return unique_desc
+    except Exception:
+        return []
+
+@st.cache_data(show_spinner=True, ttl=120)
+def load_groups_from_supabase_by_date(organization_id: str, session_date: str) -> List[Dict]:
+    """Load groups and goals for a specific session date. Cached for faster reloads."""
     supabase = get_supabase_client()
     if not supabase:
         return []
     
     try:
-        # Get all transcript sessions
-        sessions_result = supabase.schema('peer_progress').table('transcript_sessions').select('*').eq(
-            'organization_id', organization_id
-        ).order('session_date', desc=True).execute()
-        
-        sessions = sessions_result.data if sessions_result.data else []
+        # Get sessions only for the selected date
+        sessions_result = (
+            supabase
+            .schema('peer_progress')
+            .table('transcript_sessions')
+            .select('id, filename, group_name, session_date')
+            .eq('organization_id', organization_id)
+            .eq('session_date', session_date)
+            .order('session_date', desc=True)
+            .execute()
+        )
+        sessions = sessions_result.data or []
         
         groups = []
-        
+
+        if not sessions:
+            return groups
+
+        session_ids = [s['id'] for s in sessions]
+        # Fetch all goals for these sessions in a single query
+        goals_result = (
+            supabase
+            .schema('peer_progress')
+            .table('quantifiable_goals')
+            .select('transcript_session_id, participant_name, goal_text, source_details')
+            .in_('transcript_session_id', session_ids)
+            .execute()
+        )
+        goals = goals_result.data or []
+
+        # Group goals by session_id for fast assembly
+        goals_by_session = {}
+        for g in goals:
+            goals_by_session.setdefault(g['transcript_session_id'], []).append(g)
+            
         for session in sessions:
             session_id = session['id']
             group_name = session.get('group_name', session.get('filename', 'Unknown Group'))
-            session_date = session.get('session_date', 'Unknown')
-            
-            # Get all goals for this session
-            goals_result = supabase.schema('peer_progress').table('quantifiable_goals').select('*').eq(
-                'transcript_session_id', session_id
-            ).execute()
-            
-            goals = goals_result.data if goals_result.data else []
-            
-            # Format content similar to text file format
+            s_date = session.get('session_date', 'Unknown')
             content_parts = []
-            
-            for goal in goals:
+
+            for goal in goals_by_session.get(session_id, []):
                 participant_name = goal.get('participant_name', 'Unknown')
                 source_details = goal.get('source_details', {}) or {}
                 
@@ -114,7 +162,7 @@ def load_groups_from_supabase(organization_id: str = 'f58a2d22-4e96-4d4a-9348-b8
             groups.append({
                 'name': group_name,
                 'content': ''.join(content_parts),
-                'session_date': session_date or 'Unknown'
+                'session_date': s_date or 'Unknown'
             })
         
         return groups
@@ -233,29 +281,21 @@ def main():
     try:
         organization_id = 'f58a2d22-4e96-4d4a-9348-b82c8e3f1f2e'
         
-        # Load groups from Supabase
-        groups = load_groups_from_supabase(organization_id)
-        
-        if not groups:
-            st.warning("No goals found in Supabase. Run `python goal_extractor.py` to extract and save goals.")
-            return
-        
+        # Fast date bootstrap (cached)
         st.sidebar.header("Filters")
-        
-        # Date filter - get unique dates from groups, sorted with latest first
-        unique_dates = sorted(
-            set(g.get('session_date', 'Unknown') for g in groups if g.get('session_date') and g.get('session_date') != 'Unknown'),
-            reverse=True
-        )
-        
-        if unique_dates:
-            # Add "All Dates" option
-            date_options = ["All Dates"] + unique_dates
-            selected_date = st.sidebar.selectbox("📅 Filter by Session Date", date_options)
-            
-            # Filter groups by selected date
-            if selected_date != "All Dates":
-                groups = [g for g in groups if g.get('session_date') == selected_date]
+        session_dates = fetch_session_dates(organization_id)
+        if not session_dates:
+            st.warning("No sessions found in Supabase. Run the extractor to populate data.")
+            return
+
+        # Default to latest date
+        selected_date = st.sidebar.selectbox("📅 Session Date", session_dates, index=0)
+
+        # Load only groups for selected date (cached)
+        groups = load_groups_from_supabase_by_date(organization_id, selected_date)
+        if not groups:
+            st.info("No goals found for the selected date.")
+            return
         
         st.sidebar.header("Groups")
         
@@ -342,27 +382,21 @@ def main():
         st.sidebar.divider()
         st.sidebar.header("Summary")
         
-        # Get all groups (unfiltered) for total stats
-        all_groups = load_groups_from_supabase(organization_id)
-        
-        # Display stats for filtered groups
-        filtered_groups_count = len(groups)
-        total_groups = len(all_groups)
-        
-        # Count participants and goals for filtered groups
+        # Get all groups (unfiltered) for total stats (aggregate by calling cached per date and combining counts)
+        all_dates = session_dates
+        total_groups = 0
         total_participants = 0
         total_goals = 0
         quantifiable_count = 0
         
+        # Compute stats for current (filtered) groups fast
+        filtered_groups_count = len(groups)
         for group in groups:
             content = group.get('content', '')
             if not content:
                 continue
-            # Count participants (lines starting with ###)
             participants = re.findall(r'^### (.+)$', content, re.MULTILINE)
             total_participants += len(participants)
-            
-            # Count quantifiable goals
             quantifiable_matches = re.findall(r'\*\*Classification:\*\*\s*(.+?)(?:\n|$)', content, re.MULTILINE)
             for match in quantifiable_matches:
                 classification = match.strip()
@@ -371,6 +405,10 @@ def main():
                     quantifiable_count += 1
                 total_goals += 1
         
+        # Total groups across all dates (count sessions only)
+        total_groups = sum(len(load_groups_from_supabase_by_date(organization_id, d)) > 0 for d in all_dates)
+        
+        # Display stats for filtered groups
         st.sidebar.metric("Groups (Filtered)", filtered_groups_count)
         st.sidebar.metric("Total Groups (All)", total_groups)
         st.sidebar.metric("Participants", total_participants)
